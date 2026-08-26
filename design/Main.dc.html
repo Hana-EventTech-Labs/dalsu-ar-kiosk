@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+  <style>
+    body { margin: 0; font-family: "Gowun Dodum", "Malgun Gothic", sans-serif; color: #2f3a44; }
+    a { color: #2b7a9e; } a:hover { color: #1d5a7a; }
+    .jua { font-family: "Jua", "Malgun Gothic", sans-serif; }
+  </style>
+</helmet>
+<div style="position:relative;width:1080px;height:1920px;overflow:hidden;background:#f6efe0"><svg viewBox="0 0 1080 1920" width="1080" height="1920" style="position:absolute;left:0;top:0" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe9f5"/><stop offset="1" stop-color="#f6efe0"/></linearGradient>
+    <filter id="paper"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"/><feColorMatrix values="0 0 0 0 0.35 0 0 0 0 0.3 0 0 0 0 0.2 0 0 0 0.06 0"/></filter>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#sky)"/>
+  <rect width="1080" height="1920" filter="url(#paper)"/>
+  <circle cx="886" cy="173" r="76" fill="#fbe7a1" stroke="#f3cf6b" stroke-width="6"/>
+  <g fill="#ffffff" opacity="0.9">
+    <ellipse cx="216" cy="211" rx="119" ry="49"/><ellipse cx="292" cy="182" rx="86" ry="54"/>
+    <ellipse cx="648" cy="307" rx="97" ry="38"/><ellipse cx="702" cy="284" rx="65" ry="43"/>
+  </g>
+  <path d="M0 1498 C 270 1344, 432 1613, 670 1459 S 972 1344, 1080 1440 L 1080 1920 L 0 1920 Z" fill="#b9dc9c"/>
+  <path d="M0 1651 C 324 1536, 594 1766, 1080 1613 L 1080 1920 L 0 1920 Z" fill="#9bd18a"/>
+</svg>
+<img src="dalsu-front.png" style="position:absolute;left:330px;top:560px;height:720px" alt="달수">
+<div style="position:absolute;left:0;right:0;top:1330px;display:flex;flex-direction:column;align-items:center;gap:26px">
+  <div class="jua" style="font-size:88px;color:#2f3a44;text-shadow:0 4px 0 #ffffff">달수와 함께 물길을 완성해요</div>
+  <div style="font-size:44px;color:#4c5a66">화면을 터치하면 시작합니다</div>
+</div>
+<div style="position:absolute;left:0;right:0;top:230px;display:flex;justify-content:center"><div class="jua" style="font-size:46px;color:#2b7a9e;background:#ffffff;padding:16px 44px;border-radius:50px;border:4px solid #bfe6f4">삼성 달수 AR 포토카드</div></div>
+</div>
+</x-dc>
+</body>
+</html>

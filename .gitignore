@@ -1,0 +1,8 @@
+node_modules/
+out/
+logs/
+printer/dist/
+printer/**/bin/
+printer/**/obj/
+*.log
+dist/

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self';">
+  <title>달수 AR 포토카드</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="stage" data-state="IDLE">
+    <!-- 동화풍 배경: 하늘·구름·해·언덕 (디자인 캔버스와 동일 팔레트) -->
+    <!-- 배경: 시안 1~4컷과 같은 옅은 물빛 그라데이션 (해·구름·언덕 없음 — 타이틀·물방울을 방해하지 않도록) -->
+    <svg id="bg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#dceef8"/><stop offset="0.55" stop-color="#eaf5fb"/><stop offset="1" stop-color="#f4fafd"/>
+        </linearGradient>
+        <radialGradient id="glow" cx="50%" cy="34%" r="62%">
+          <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="1080" height="1920" fill="url(#sky)"/>
+      <rect width="1080" height="1920" fill="url(#glow)"/>
+      <g fill="#ffffff" opacity=".55">
+        <circle cx="132" cy="742" r="13"/><circle cx="946" cy="612" r="10"/><circle cx="228" cy="1268" r="16"/>
+        <circle cx="874" cy="1352" r="12"/><circle cx="520" cy="1616" r="9"/><circle cx="96" cy="1520" r="11"/>
+      </g>
+    </svg>
+
+    <!-- 웹캠 라이브 (카운트다운·촬영 단계에서만 표시) -->
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="fx"></canvas>
+
+    <!-- 시안 1~4컷: 타이틀·부제는 대기~터치 단계 내내 상단 고정 -->
+    <header id="head">
+      <h1 id="head-title"></h1>
+      <p id="head-sub"></p>
+    </header>
+
+    <!-- 시안 1~2컷: 달수는 하단 중앙에서 빼꼼 -->
+    <img id="stage-dalsu" alt="달수">
+
+    <!-- 물방울 4개 — 시안 1컷부터 노출, 터치는 GUIDE 단계에서만 -->
+    <div id="bubbles"></div>
+
+    <!-- 대기 화면 -->
+    <section id="idle" class="screen">
+      <p id="idle-sub"></p>
+    </section>
+
+    <!-- 물방울 터치 가이드 — 시안 2컷 -->
+    <section id="guide" class="screen">
+      <div id="guide-hand"></div>
+      <p id="guide-text"></p>
+    </section>
+
+    <!-- 연출 단계 공통 캡션 -->
+    <section id="story" class="screen"><p class="caption" id="story-text"></p></section>
+
+    <!-- 카운트다운 -->
+    <section id="countdown" class="screen">
+      <p class="caption" id="countdown-text"></p>
+      <div id="count-num"></div>
+    </section>
+
+    <!-- 미리보기 + 출력 (시안 8컷) -->
+    <section id="preview" class="screen">
+      <p class="caption big" id="preview-title"></p>
+      <canvas id="card" width="1012" height="636"></canvas>
+      <div id="printer"></div>
+      <div id="print-progress"><div id="print-bar"></div></div>
+      <p class="caption" id="preview-text"></p>
+    </section>
+
+    <!-- 완료 / 오류 -->
+    <section id="done" class="screen"><p class="caption big" id="done-text"></p></section>
+    <section id="error" class="screen"><p class="caption big" id="error-text"></p><button id="error-reset">처음으로</button></section>
+
+    <div id="flash"></div>
+    <!-- 운영자 전용: 우상단 투명 영역 3회 연속 터치 시 앱 종료 (화면에는 보이지 않음) -->
+    <div id="exit-hit" aria-hidden="true"></div>
+  </div>
+  <script src="flow.js"></script>
+  <script src="compose.js"></script>
+  <script src="river.js"></script>
+  <script src="art.js"></script>
+  <script src="water.js"></script>
+  <script src="motion.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

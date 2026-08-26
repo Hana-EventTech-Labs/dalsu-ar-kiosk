@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>disable</Nullable>
+    <AssemblyTitle>Dalsu Card Printer CLI</AssemblyTitle>
+    <Product>DalsuPrint</Product>
+    <Company>하나플랫폼</Company>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="SmartComm2.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+  </ItemGroup>
+</Project>

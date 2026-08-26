@@ -1,0 +1,192 @@
+// Electron 메인 — 창 생성, 설정 제공, 결과 저장, 인쇄 CLI(DalsuPrint.exe) 실행
+'use strict';
+const { app, BrowserWindow, ipcMain, session } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+
+const ROOT = __dirname;                                   // 앱 리소스 kiosk/ (패키징 시 resources/app/kiosk)
+// 데이터 루트 — 배포 exe 옆(설정·출력·로그를 현장에서 바로 열 수 있게). 개발 시에는 저장소 루트.
+// portable(단일 exe) 빌드는 임시폴더로 풀리므로, 사용자가 둔 exe 위치(PORTABLE_EXECUTABLE_DIR)를 우선한다.
+const DATA_ROOT = app.isPackaged
+  ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')))
+  : path.resolve(ROOT, '..');
+const BUNDLED_CONFIG = path.join(ROOT, 'config.json');
+// 배포본은 exe 옆 config.json을 쓴다(없으면 번들본을 1회 복사) — 현장에서 메모장으로 수정 가능
+const CONFIG_PATH = app.isPackaged ? path.join(DATA_ROOT, 'config.json') : BUNDLED_CONFIG;
+if (app.isPackaged && !fs.existsSync(CONFIG_PATH)) { try { fs.copyFileSync(BUNDLED_CONFIG, CONFIG_PATH); } catch (e) { /* 읽기전용 위치면 번들본 사용 */ } }
+const ARGS = new Set(process.argv.slice(1));
+const IS_SMOKE = ARGS.has('--smoke');
+// 배포 exe는 더블클릭만으로 전체화면 키오스크. 창 모드가 필요하면 --windowed (개발 npm start는 창 모드 유지)
+const IS_KIOSK = ARGS.has('--kiosk') || (app.isPackaged && !IS_SMOKE && !ARGS.has('--windowed'));
+const SMOKE_SPEED = (process.argv.find((a) => a.startsWith('--smoke-speed=')) || '').split('=')[1] || '';
+
+let config = loadConfig();
+const LOG_DIR = path.join(DATA_ROOT, 'logs');
+fs.mkdirSync(LOG_DIR, { recursive: true });
+const logFile = path.join(LOG_DIR, `kiosk-${today()}.log`);
+
+function today() { return new Date().toISOString().slice(0, 10); }
+function stamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
+
+function log(level, msg, extra) {
+  const line = `[${new Date().toISOString()}] ${level} ${msg}${extra ? ' ' + JSON.stringify(extra) : ''}`;
+  fs.appendFile(logFile, line + '\n', () => {});
+  (level === 'ERROR' ? console.error : console.log)(line);
+}
+
+function loadConfig() {
+  const p = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : BUNDLED_CONFIG;
+  const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+  // 필수 검증 — 잘못된 설정으로 현장에서 조용히 죽는 것 방지
+  if (!Array.isArray(c.goals) || c.goals.length !== 4) throw new Error('config.goals는 4개여야 합니다');
+  if (!['smart', 'dry-run'].includes(c.printer.mode)) throw new Error('config.printer.mode는 smart|dry-run');
+  if (c.card.width !== 1012 || c.card.height !== 636) throw new Error('card 크기는 1012×636 고정');
+  return c;
+}
+
+function outDir(sub) {
+  // 배포본: exe 옆 out/ (쓰기 가능·회수 쉬움) / 개발: config.output.dir
+  const base = app.isPackaged ? path.join(DATA_ROOT, 'out') : path.resolve(ROOT, config.output.dir);
+  const d = path.join(base, sub || today());
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+// 인쇄 CLI 경로 — 앱 리소스 → exe 옆 순으로 탐색(둘 다 없으면 null)
+function resolvePrinterExe() {
+  const cands = [
+    path.resolve(ROOT, config.printer.exe),
+    ...(app.isPackaged ? [path.join(process.resourcesPath, 'printer', 'DalsuPrint.exe')] : []), // 배포본 동봉 CLI
+    path.join(DATA_ROOT, 'printer', 'DalsuPrint.exe'),
+    path.join(DATA_ROOT, 'DalsuPrint.exe'),
+  ];
+  return cands.find((p) => fs.existsSync(p)) || null;
+}
+
+function dataUrlToFile(dataUrl, file) {
+  const m = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
+  if (!m) throw new Error('PNG data URL이 아닙니다');
+  fs.writeFileSync(file, Buffer.from(m[1], 'base64'));
+  return file;
+}
+
+// 인쇄: 앞면 PNG 저장 → 모드에 따라 DalsuPrint.exe 실행
+async function printCard(frontDataUrl, opts) {
+  const dir = outDir(opts && opts.subdir);
+  const base = `card-${stamp()}`;
+  const front = dataUrlToFile(frontDataUrl, path.join(dir, `${base}-front.png`));
+  const backSrc = path.resolve(ROOT, config.card.backImage);
+  if (!fs.existsSync(backSrc)) throw new Error(`뒷면 이미지 없음: ${backSrc} (npm run assets)`);
+  // 배포본에서는 원본이 app.asar 안이라 외부 프로세스(DalsuPrint.exe)가 못 읽는다 → out/에 복사한 실파일을 인쇄에 넘긴다
+  const back = path.join(dir, `${base}-back.png`);
+  fs.copyFileSync(backSrc, back);
+  log('INFO', '카드 저장', { front, back });
+
+  if (config.printer.mode === 'dry-run') {
+    log('INFO', 'dry-run 모드 — 실제 인쇄 생략');
+    return { ok: true, mode: 'dry-run', front, back };
+  }
+
+  const exe = resolvePrinterExe();
+  if (!exe) throw new Error(`인쇄 CLI(DalsuPrint.exe)를 찾을 수 없습니다 — 설치 폴더를 확인하세요`);
+  const args = ['--front', front, '--back', back];
+  if (config.printer.deviceDesc) args.push('--printer', config.printer.deviceDesc);
+
+  let lastErr = null;
+  for (let attempt = 0; attempt <= (config.printer.retry || 0); attempt++) {
+    const r = await runPrinter(exe, args);
+    if (r.code === 0) { log('INFO', '인쇄 완료', { attempt, out: r.stdout.trim().slice(-300) }); return { ok: true, mode: 'smart', front, back }; }
+    lastErr = `exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(-300)}`;
+    log('ERROR', '인쇄 실패', { attempt, lastErr });
+  }
+  return { ok: false, mode: 'smart', error: lastErr, front, back };
+}
+
+function runPrinter(exe, args) {
+  return new Promise((resolve) => {
+    const p = spawn(exe, args, { windowsHide: true });
+    let stdout = '', stderr = '';
+    const timer = setTimeout(() => { p.kill(); stderr += '\n[timeout]'; }, config.printer.timeoutMs || 90000);
+    p.stdout.on('data', d => { stdout += d; });
+    p.stderr.on('data', d => { stderr += d; });
+    p.on('error', e => { clearTimeout(timer); resolve({ code: -1, stdout, stderr: String(e) }); });
+    p.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+  });
+}
+
+function createWindow() {
+  // 키오스크 실물은 1080×1920 세로. 스모크는 화면에 들어가도록 같은 비율의 절반(540×960)으로 띄워
+  // 캡처가 실제 키오스크 비율(vw/vh)을 그대로 반영하게 한다.
+  const win = new BrowserWindow({
+    width: IS_SMOKE ? 540 : 1080, height: IS_SMOKE ? 960 : 1920,
+    useContentSize: true,
+    fullscreen: IS_KIOSK, kiosk: IS_KIOSK, frame: !IS_KIOSK, autoHideMenuBar: true,
+    backgroundColor: '#0b2a3a',
+    show: true,
+    webPreferences: {
+      preload: path.join(ROOT, 'preload.js'), contextIsolation: true, nodeIntegration: false,
+      // 창이 가려지거나 뒤로 밀려도 requestAnimationFrame/타이머가 멈추지 않게 — 멈추면 연출이 그 자리에서 정지한다
+      backgroundThrottling: false,
+    },
+  });
+  win.loadFile(path.join(ROOT, 'src', 'index.html'), {
+    query: IS_SMOKE
+      ? { smoke: '1', ...(SMOKE_SPEED ? { speed: SMOKE_SPEED } : {}), ...(ARGS.has('--smoke-exit') ? { exitcheck: '1' } : {}) }
+      : {},
+  });
+  if (!IS_KIOSK && !IS_SMOKE && ARGS.has('--devtools')) win.webContents.openDevTools({ mode: 'detach' });
+  // F11: 전체화면 토글 — 배포 exe를 더블클릭(인자 없이)해도 현장에서 키오스크 화면을 확인할 수 있게
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
+  });
+  return win;
+}
+
+// 프리플라이트: smart 모드면 시작 시 프린터 CLI/장비를 확인해 결과를 렌더러에 전달 (현장에서 조용히 죽는 것 방지)
+let preflight = { ok: true, mode: 'dry-run', detail: 'dry-run' };
+async function runPreflight() {
+  if (config.printer.mode !== 'smart') return preflight;
+  const exe = resolvePrinterExe();
+  if (!exe) return (preflight = { ok: false, mode: 'smart', detail: '인쇄 CLI(DalsuPrint.exe) 없음' });
+  const r = await runPrinter(exe, ['--list']);
+  const tail = (r.stdout + r.stderr).trim().split(/\r?\n/).slice(-3).join(' | ');
+  preflight = { ok: r.code === 0, mode: 'smart', detail: tail };
+  log(preflight.ok ? 'INFO' : 'ERROR', '프린터 프리플라이트', preflight);
+  return preflight;
+}
+
+app.whenReady().then(async () => {
+  // 웹캠 권한 자동 허용 (키오스크는 프롬프트 불가)
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
+  log('INFO', `앱 시작 mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
+  await runPreflight();
+  createWindow();
+});
+
+ipcMain.handle('config:get', () => config);
+ipcMain.handle('preflight:get', () => preflight);
+ipcMain.handle('preflight:rerun', () => runPreflight());
+ipcMain.handle('config:reload', () => { config = loadConfig(); log('INFO', '설정 리로드'); return config; });
+ipcMain.handle('log', (_e, level, msg, extra) => log(level, msg, extra));
+ipcMain.handle('print', async (_e, frontDataUrl, opts) => {
+  try { return await printCard(frontDataUrl, opts); }
+  catch (e) { log('ERROR', '인쇄 예외', { error: String(e) }); return { ok: false, error: String(e) }; }
+});
+// 스모크 종료: 결과 코드로 프로세스 종료 (npm run smoke 게이트)
+// 스모크 화면 캡처 (UI 육안 확인용) → out/smoke/screen-<name>.png
+ipcMain.handle('snap', async (e, name) => {
+  const win = BrowserWindow.fromWebContents(e.sender); if (!win) return null;
+  const img = await win.webContents.capturePage();
+  const file = path.join(outDir('smoke'), `screen-${name}.png`);
+  fs.writeFileSync(file, img.toPNG()); return file;
+});
+// 숨김 종료 버튼(우상단 3회 클릭) — 키오스크 모드에는 창 닫기 UI가 없으므로 운영자용 탈출구
+ipcMain.handle('app:quit', () => { log('INFO', '숨김 종료 버튼 — 앱 종료'); setTimeout(() => app.exit(0), 80); return true; });
+ipcMain.handle('smoke:exit', (_e, ok, info) => {
+  log(ok ? 'INFO' : 'ERROR', 'SMOKE ' + (ok ? 'PASS' : 'FAIL'), info);
+  setTimeout(() => app.exit(ok ? 0 : 1), 100);
+});
+
+app.on('window-all-closed', () => app.quit());
+process.on('uncaughtException', (e) => { log('ERROR', 'uncaught', { error: String(e && e.stack || e) }); if (IS_SMOKE) app.exit(1); });

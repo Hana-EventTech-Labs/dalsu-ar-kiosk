@@ -1,0 +1,104 @@
+{
+  "event": {
+    "name": "삼성 달수 AR 포토카드 — 대한민국 국제물주간(KIWW) 2026",
+    "venue": "대구 엑스코"
+  },
+  "screen": {
+    "headTitle": "손끝으로 만드는\n달수의 물길",
+    "headSub": "탄소, 수자원, 폐기물, 오염물질 분야에서\n환경영향을 최소화하는 4대 목표",
+    "idleSubtitle": "화면을 터치하면 시작합니다",
+    "guideText": "물방울을\n터치해주세요",
+    "achieveText": "4개의 목표가 모여\n하나의 깨끗한 물길이 됩니다",
+    "riverText": "4개의 목표가 모여\n하나의 깨끗한 물길이 됩니다",
+    "natureText": "함께 만들어가는 깨끗한 미래\n달수와 함께해요!",
+    "swimText": "함께 만들어가는 깨끗한 미래\n달수와 함께해요!",
+    "countdownText": "3초 후 촬영을 시작합니다",
+    "previewTitle": "촬영이 완료되었습니다!",
+    "previewText": "포토카드가 출력되고 있어요",
+    "doneText": "포토카드를 가져가세요!",
+    "errorText": "출력에 문제가 생겼어요. 직원을 불러주세요.",
+    "captureOverlay": false
+  },
+  "goals": [
+    {
+      "key": "carbon",
+      "label": "탄소",
+      "text": "2050년 탄소중립 달성",
+      "color": "#9fc4f2",
+      "icon": "cloud",
+      "iconColor": "#5b9bd5"
+    },
+    {
+      "key": "water",
+      "label": "수자원",
+      "text": "2030년 용수 취수량 2021년 수준으로 절감",
+      "color": "#8fd3ea",
+      "icon": "drop",
+      "iconColor": "#2b8fc4"
+    },
+    {
+      "key": "waste",
+      "label": "폐기물",
+      "text": "2030년 폐기물 재활용률 99.9% 달성",
+      "color": "#a8dba0",
+      "icon": "recycle",
+      "iconColor": "#3fae5a"
+    },
+    {
+      "key": "pollution",
+      "label": "오염물질",
+      "text": "2040년 대기·수질 오염물질 자연상태 수준으로 저감",
+      "color": "#c9e3b0",
+      "icon": "factory",
+      "iconColor": "#4a90c2"
+    }
+  ],
+  "timing": {
+    "goalTextMs": 1400,
+    "achieveMs": 1600,
+    "riverFormMs": 2200,
+    "natureMs": 3000,
+    "swimMs": 4500,
+    "countdownSec": 3,
+    "previewMs": 26000,
+    "doneMs": 4000,
+    "idleReturnMs": 60000
+  },
+  "sound": {
+    "enabled": true
+  },
+  "camera": {
+    "deviceId": "",
+    "width": 1280,
+    "height": 720,
+    "mirror": true
+  },
+  "card": {
+    "width": 1012,
+    "height": 636,
+    "backImage": "assets/card-back.png",
+    "dalsuScale": 0.3,
+    "dalsuAnchor": "bottom-right",
+    "artTop": 0.56
+  },
+  "printer": {
+    "mode": "dry-run",
+    "exe": "../printer/dist/DalsuPrint.exe",
+    "deviceDesc": "",
+    "retry": 1,
+    "timeoutMs": 90000
+  },
+  "output": {
+    "dir": "../out",
+    "keepDays": 30
+  },
+  "river": {
+    "style": "water",
+    "widthRatio": 0.105,
+    "cardWidthRatio": 0.16,
+    "flowPxPerSec": 95,
+    "tilePx": 460,
+    "minTaper": 0.22,
+    "seed": 20260909
+  }
+}
