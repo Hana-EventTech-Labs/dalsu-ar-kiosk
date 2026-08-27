@@ -1,11 +1,23 @@
 // S자 물길 경로 + 달수 이동 좌표 (순수 JS). 좌표는 0~1 정규화, renderer가 화면/카드 크기에 곱해 사용.
 'use strict';
 
-// 3차 베지어 2개를 이어 붙인 S자. 위(0,0.15) → 아래(1,0.85) 방향.
-const SEGMENTS = [
-  { p0: [0.10, 0.18], p1: [0.55, 0.05], p2: [0.05, 0.50], p3: [0.50, 0.50] },
-  { p0: [0.50, 0.50], p1: [0.95, 0.50], p2: [0.45, 0.95], p3: [0.90, 0.82] },
+// 시냇물 — 위에서 아래로 굽이치며 흐르는 물길. 전체 실루엣이 자연스럽게 S를 이룬다.
+// 글자 S를 그대로 그리면 도형처럼 뻣뻣해지므로, 굽이를 좌우 비대칭으로 두어 실제 개울처럼 보이게 한다.
+//   · u=0 = 4줄기가 하나로 뭉치는 합류점(화면 중간). 여기서부터 물길이 아래로 굽이쳐 흐른다.
+//   · u=0.5 = 가로 중앙(x=0.50)이자 물길의 중간 = 달수 도착점 (기획 7번).
+//   · 끝점 y > 1 로 두어 물길이 화면 아래로 빠져나간다 (끊긴 오브젝트로 보이지 않게)
+const DEFAULT_SEGMENTS = [
+  { p0: [0.50, 0.44], p1: [0.25, 0.49], p2: [0.23, 0.62], p3: [0.50, 0.68] }, // 상류: 합류점(화면 중간)에서 왼쪽으로 굽이쳤다 돌아옴
+  { p0: [0.50, 0.68], p1: [0.80, 0.74], p2: [0.64, 1.00], p3: [0.28, 1.14] }, // 하류: 오른쪽으로 크게 돌아 왼쪽 아래로 빠져나감
 ];
+// config.river.path 로 현장에서 코드 수정 없이 경로를 바꿀 수 있다 (setPath 로 주입)
+let SEGMENTS = DEFAULT_SEGMENTS;
+function setPath(segs) {
+  const ok = Array.isArray(segs) && segs.length === 2
+    && segs.every((s) => ['p0', 'p1', 'p2', 'p3'].every((k) => Array.isArray(s[k]) && s[k].length === 2));
+  SEGMENTS = ok ? segs : DEFAULT_SEGMENTS;
+  return ok;
+}
 
 function cubic(p0, p1, p2, p3, t) {
   const mt = 1 - t;
@@ -38,6 +50,99 @@ function samples(n) {
   return out;
 }
 
+// ---------- 지류(합류 전 4줄기) ----------
+// 물방울 자리 → 합류점으로 흐르는 곡선.
+// 제어점을 발원지 **바로 아래**에 두어, 물이 물방울에서 수직으로 흘러내리다가 중앙으로 꺾이게 한다.
+// (두 점을 직선으로 이으면 중앙에 가까운 안쪽 지류가 너무 짧아 보이지 않는다)
+// drop = 수직 낙하 비율(0~1). 클수록 아래로 길게 떨어졌다가 꺾인다.
+function tributaryPath(from, to, drop) {
+  const d = drop == null ? 0.88 : drop;
+  return { p0: from, c: [from[0], from[1] + (to[1] - from[1]) * d], p1: to };
+}
+
+// 지류 위 진행도 u(0~1) → 좌표
+function tributaryPointAt(t, u) {
+  const c = Math.min(1, Math.max(0, u)), mt = 1 - c;
+  return [
+    mt * mt * t.p0[0] + 2 * mt * c * t.c[0] + c * c * t.p1[0],
+    mt * mt * t.p0[1] + 2 * mt * c * t.c[1] + c * c * t.p1[1],
+  ];
+}
+
+// 지류를 progress(0~1)만큼 자라난 상태로 샘플 — 발원지에서 합류점 쪽으로 뻗는다
+function tributarySamples(t, n, progress) {
+  const p = Math.min(1, Math.max(0, progress == null ? 1 : progress));
+  const out = [];
+  for (let i = 0; i <= n; i++) out.push(tributaryPointAt(t, (i / n) * p));
+  return out;
+}
+
+// 본류 위에서 주어진 점과 가장 가까운 진행도 u 를 찾는다 (구간 [uFrom, uTo] 안에서 조밀 탐색 후 국소 세분)
+function nearestU(pt, uFrom, uTo) {
+  const a = uFrom == null ? 0 : uFrom, b = uTo == null ? 1 : uTo;
+  let bestU = a, bestD = Infinity;
+  const scan = (lo, hi, n) => {
+    for (let i = 0; i <= n; i++) {
+      const u = lo + (hi - lo) * (i / n);
+      const p = pointAt(u), d = (p[0] - pt[0]) ** 2 + (p[1] - pt[1]) ** 2;
+      if (d < bestD) { bestD = d; bestU = u; }
+    }
+  };
+  scan(a, b, 200);
+  const step = (b - a) / 200;
+  scan(Math.max(a, bestU - step), Math.min(b, bestU + step), 40);
+  return bestU;
+}
+
+// 발원지(목표 문구 자리) 4개 → **물길 머리 한 점**으로 모이는 지류.
+// 기획 5번: "4개의 물길이 위에서 아래로 하나로 뭉쳐지면서 S자 형태로" 간다.
+// 합류점을 물길 중간에 두면 지류가 본류를 가로질러야 하므로, 합류점은 반드시 물길의 **머리(u=0)** 여야 한다.
+// 반환: { path, u, to } — u 는 본류 상의 합류 진행도(항상 0)
+function tributaries(sources, mergeAt) {
+  const to = mergeAt || pointAt(0);
+  return sources.map((from) => {
+    const dist = Math.abs(from[0] - to[0]);          // 바깥쪽일수록 더 늦게 꺾인다
+    return { path: tributaryPath(from, to, 0.84 + dist * 0.14), u: 0, to };
+  });
+}
+
+// ---------- 숲·언덕 배치 (물길을 피해서) ----------
+
+// 정규화 좌표는 세로로 긴 화면에서 거리가 왜곡되므로, 화면 폭 기준으로 환산해 거리를 잰다.
+// aspect = 화면 높이/폭 (1080×1920 이면 1.778).
+function distToRiver(pt, n, aspect) {
+  const N = n || 72, a = aspect || (1920 / 1080);
+  let best = Infinity;
+  for (let i = 0; i <= N; i++) {
+    const [x, y] = pointAt(i / N);
+    const dx = x - pt[0], dy = (y - pt[1]) * a;
+    const d = dx * dx + dy * dy;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+
+// 물길에서 minDist 이상 떨어진 자리들 — 숲·나무를 놓을 곳.
+// 저불일치 수열(R2)로 고르게 흩뿌리므로 결정적이다(같은 입력이면 늘 같은 배치).
+function scenerySlots(count, opts) {
+  const o = opts || {};
+  const yTop = o.yTop == null ? 0.30 : o.yTop;
+  const yBottom = o.yBottom == null ? 1.04 : o.yBottom;
+  const minDist = o.minDist == null ? 0.20 : o.minDist;
+  const aspect = o.aspect || (1920 / 1080);
+  const out = [];
+  const G1 = 0.7548776662, G2 = 0.5698402909;   // R2 수열
+  for (let i = 1, guard = 0; out.length < count && guard < count * 60; i++, guard++) {
+    const x = 0.025 + ((i * G1) % 1) * 0.95;
+    const y = yTop + ((i * G2) % 1) * (yBottom - yTop);
+    if (distToRiver([x, y], 72, aspect) < minDist) continue;
+    // 아래로 갈수록 카메라에 가까워 크게, 위로 갈수록 멀어 작고 흐리게
+    const depth = Math.min(1, Math.max(0, (y - yTop) / Math.max(0.001, yBottom - yTop)));
+    out.push({ x, y, depth, side: x < 0.5 ? -1 : 1, i: out.length });
+  }
+  return out;
+}
+
 // 경로를 정규화 박스 안으로 눌러 담기 — 카드 합성에서 인물(상단 중앙)을 피해 하단 물 영역에만 물길을 그릴 때 사용
 const FULL_BOX = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
 function mapBox([x, y], box) {
@@ -46,9 +151,9 @@ function mapBox([x, y], box) {
 }
 function pointIn(u, box) { return mapBox(pointAt(u), box); }
 function samplesIn(n, box) { return samples(n).map((p) => mapBox(p, box)); }
-function natureSlotsIn(count, offset, box) {
+function natureSlotsIn(count, offset, box, aspect, clearance) {
   const b = box || FULL_BOX;
-  return natureSlots(count, offset).map((s) => {
+  return natureSlots(count, offset, aspect, clearance).map((s) => {
     const [x, y] = mapBox([s.x, s.y], b);
     return { ...s, x, y };
   });
@@ -70,20 +175,45 @@ function svgPath(w, h) {
 }
 
 // 자연 회복 요소 배치 슬롯: 물길 양옆에 번갈아, 진행도 순 (등장 순서 = 배열 순서)
-function natureSlots(count, offset) {
-  const off = offset ?? 0.12;
+// offset 은 **화면 높이 기준 비율**이다 (물길 폭 widthRatio 와 같은 기준이라 "둑에서 얼마나 떨어질지"를 바로 계산할 수 있다).
+// 정규화 좌표에서 그냥 밀면 9:16 화면에서 가로는 절반만 밀려 식물이 물 한가운데 놓인다 — 실제로 그렇게 나갔다.
+// 그래서 (x*aspect, y) 라는 '높이 단위' 공간에서 법선을 잡고 되돌린다.
+const FULL_ASPECT = 1080 / 1920;
+function natureSlots(count, offset, aspect, clearance) {
+  const off = offset == null ? 0.12 : offset;
+  const a = aspect || FULL_ASPECT;
   const out = [];
   for (let i = 0; i < count; i++) {
     const u = (i + 1) / (count + 1);
     const [x, y] = pointAt(u);
-    const ang = angleAt(u) + Math.PI / 2;
-    const side = i % 2 === 0 ? 1 : -1;
-    out.push({ u, x: x + Math.cos(ang) * off * side, y: y + Math.sin(ang) * off * side, side });
+    const [x2, y2] = pointAt(Math.min(1, u + 0.004));
+    const dx = (x2 - x) * a, dy = y2 - y;
+    const L = Math.hypot(dx, dy) || 1;
+    const nx = -dy / L, ny = dx / L;                    // 높이 단위 공간의 법선
+    let side = i % 2 === 0 ? 1 : -1;
+    // S자는 되돌아오므로, 옆으로 밀어도 물길의 **다른 구간**에 걸릴 수 있다.
+    // 걸리면 더 밀고, 그래도 안 되면 반대편으로 보낸다.
+    const clear = clearance == null ? 0 : clearance;
+    const at = (k, sd) => [x + (nx * off * k / a) * sd, y + ny * off * k * sd];
+    let pt = at(1, side);
+    if (clear > 0) {
+      let bestPt = pt, bestD = distToRiver(pt, 120, 1 / a);
+      for (const sd of [side, -side]) {
+        for (const k of [1, 1.35, 1.75, 2.2]) {
+          const q = at(k, sd), d = distToRiver(q, 120, 1 / a);
+          if (d > bestD) { bestD = d; bestPt = q; side = sd; }
+          if (d >= clear) break;
+        }
+        if (bestD >= clear) break;
+      }
+      pt = bestPt;
+    }
+    out.push({ u, x: pt[0], y: pt[1], side });
   }
   return out;
 }
 
 // 브라우저(renderer, contextIsolation)에서는 전역으로, node(test)에서는 module.exports로 노출
-{ const __exports = { SEGMENTS, FULL_BOX, pointAt, angleAt, samples, svgPath, natureSlots, pointIn, samplesIn, samplesRange, natureSlotsIn };
+{ const __exports = { get SEGMENTS() { return SEGMENTS; }, DEFAULT_SEGMENTS, setPath, tributaryPath, tributaryPointAt, tributarySamples, tributaries, nearestU, distToRiver, scenerySlots, FULL_BOX, pointAt, angleAt, samples, svgPath, natureSlots, pointIn, samplesIn, samplesRange, natureSlotsIn };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }

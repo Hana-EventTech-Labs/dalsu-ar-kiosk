@@ -9,60 +9,77 @@
     "idleSubtitle": "화면을 터치하면 시작합니다",
     "guideText": "물방울을\n터치해주세요",
     "achieveText": "4개의 목표가 모여\n하나의 깨끗한 물길이 됩니다",
+    "goalRowTop": 17,
     "riverText": "4개의 목표가 모여\n하나의 깨끗한 물길이 됩니다",
     "natureText": "함께 만들어가는 깨끗한 미래\n달수와 함께해요!",
     "swimText": "함께 만들어가는 깨끗한 미래\n달수와 함께해요!",
+    "readyText": "자, 이제 준비하세요!",
     "countdownText": "3초 후 촬영을 시작합니다",
     "previewTitle": "촬영이 완료되었습니다!",
     "previewText": "포토카드가 출력되고 있어요",
     "doneText": "포토카드를 가져가세요!",
+    "doneSub": "아래 출력구에서 카드를 꺼내 주세요",
     "errorText": "출력에 문제가 생겼어요. 직원을 불러주세요.",
-    "captureOverlay": false
+    "captureOverlay": false,
+    "printStages": {
+      "start": "출력 준비 중이에요",
+      "connect": "프린터를 연결하고 있어요",
+      "settings": "양면 인쇄를 설정하고 있어요",
+      "cardin": "카드를 넣고 있어요",
+      "load": "사진을 프린터로 보내고 있어요",
+      "ribbon": "리본을 확인하고 있어요",
+      "print": "카드를 인쇄하고 있어요 (약 1분)",
+      "eject": "카드가 나오고 있어요",
+      "retry": "다시 시도하고 있어요",
+      "done": "거의 다 됐어요"
+    }
   },
   "goals": [
     {
       "key": "carbon",
       "label": "탄소",
       "text": "2050년 탄소중립 달성",
-      "color": "#9fc4f2",
+      "color": "#7fb3ea",
       "icon": "cloud",
-      "iconColor": "#5b9bd5"
+      "iconColor": "#0d4a78"
     },
     {
       "key": "water",
       "label": "수자원",
       "text": "2030년 용수 취수량 2021년 수준으로 절감",
-      "color": "#8fd3ea",
+      "color": "#63c3e2",
       "icon": "drop",
-      "iconColor": "#2b8fc4"
+      "iconColor": "#08536f"
     },
     {
       "key": "waste",
       "label": "폐기물",
       "text": "2030년 폐기물 재활용률 99.9% 달성",
-      "color": "#a8dba0",
+      "color": "#84cb7c",
       "icon": "recycle",
-      "iconColor": "#3fae5a"
+      "iconColor": "#14612a"
     },
     {
       "key": "pollution",
       "label": "오염물질",
       "text": "2040년 대기·수질 오염물질 자연상태 수준으로 저감",
-      "color": "#c9e3b0",
+      "color": "#a9d492",
       "icon": "factory",
-      "iconColor": "#4a90c2"
+      "iconColor": "#12456b"
     }
   ],
   "timing": {
     "goalTextMs": 1400,
-    "achieveMs": 1600,
-    "riverFormMs": 2200,
-    "natureMs": 3000,
-    "swimMs": 4500,
+    "achieveMs": 2200,
+    "riverFormMs": 4000,
+    "natureMs": 1400,
+    "swimMs": 6000,
     "countdownSec": 3,
+    "readyMs": 1000,
     "previewMs": 26000,
     "doneMs": 4000,
-    "idleReturnMs": 60000
+    "idleReturnMs": 30000,
+    "previewMinMs": 6000
   },
   "sound": {
     "enabled": true
@@ -74,19 +91,46 @@
     "mirror": true
   },
   "card": {
-    "width": 1012,
-    "height": 636,
+    "orientation": "portrait",
+    "width": 664,
+    "height": 1040,
     "backImage": "assets/card-back.png",
     "dalsuScale": 0.3,
     "dalsuAnchor": "bottom-right",
-    "artTop": 0.56
+    "artTop": 0.5,
+    "natureCount": 8,
+    "natureSize": 0.13,
+    "natureAvoid": 0.44,
+    "trees": [
+      {
+        "x": 0.135,
+        "y": 0.9,
+        "s": 0.2,
+        "kind": "round"
+      },
+      {
+        "x": 0.25,
+        "y": 0.828,
+        "s": 0.15,
+        "kind": "pine",
+        "a": 0.85
+      },
+      {
+        "x": 0.88,
+        "y": 0.715,
+        "s": 0.17,
+        "kind": "round",
+        "a": 0.9
+      }
+    ]
   },
   "printer": {
     "mode": "dry-run",
     "exe": "../printer/dist/DalsuPrint.exe",
     "deviceDesc": "",
     "retry": 1,
-    "timeoutMs": 90000
+    "timeoutMs": 180000,
+    "sdk": "comm"
   },
   "output": {
     "dir": "../out",
@@ -94,11 +138,23 @@
   },
   "river": {
     "style": "water",
-    "widthRatio": 0.105,
+    "widthRatio": 0.21,
     "cardWidthRatio": 0.16,
     "flowPxPerSec": 95,
     "tilePx": 460,
-    "minTaper": 0.22,
-    "seed": 20260909
+    "minTaper": 0.3,
+    "seed": 20260909,
+    "tributaryWidthRatio": 0.038,
+    "natureOffset": 0.17,
+    "tributaryEndTaper": 1.25,
+    "quality": "auto",
+    "tributaryMinTaper": 0.62
+  },
+  "scene": {
+    "treeCount": 18,
+    "treeSize": 0.115,
+    "yTop": 0.3,
+    "minDist": 0.27,
+    "hillY": 0.4
   }
 }

@@ -1,10 +1,18 @@
 /* 동화풍 스타일 — 디자인 캔버스(달수 AR 키오스크 동화풍) 기준. 팔레트: 하늘 #cfe9f5 · 종이 #f6efe0 · 물 #7cc4e0 · 잎 #9bd18a/#b9dc9c · 잉크 #2f3a44 · 포인트 #2b7a9e */
 @import url("../assets/fonts/fonts.css");
-:root { --sky: #cfe9f5; --paper: #f6efe0; --water: #7cc4e0; --leaf: #9bd18a; --leaf2: #b9dc9c; --ink: #2f3a44; --ink2: #4c5a66; --accent: #2b7a9e; --sun: #fbe7a1; }
+:root { --sky: #bfe0f2; --paper: #eef6fb; --water: #2f92bd; --leaf: #5aa85e; --leaf2: #7cbf72;
+  --ink: #14212b; --ink2: #2c3d4a; --accent: #0a5c85; --deep: #0b4a70; --sun: #f5c93f; }
 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-drag: none; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: var(--paper); font-family: "Gowun Dodum", "Malgun Gothic", sans-serif; color: var(--ink); cursor: none; }
-.jua, h1, .caption, .bubble .label, #count-num { font-family: "Jua", "Malgun Gothic", sans-serif; font-weight: 400; }
-#stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: var(--paper); }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0e2833; font-family: "Jua", "Malgun Gothic", sans-serif; color: var(--ink); cursor: none; }
+body { display: flex; align-items: center; justify-content: center; }
+.jua, h1, .caption, .bubble .label, #count-num { font-family: "Jua", "Malgun Gothic", sans-serif; }
+/* 번들 서체는 400 웨이트뿐이라, 굵게 보이려면 합성 볼드(700) + 글자 외곽 보강을 함께 쓴다 */
+h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-title, #idle p, #guide-text, #preview-text { font-weight: 700; }
+/* 키오스크는 1080×1920 세로 전용. 어떤 모니터에서 띄워도 같은 화면이 되도록 9:16 무대를 만들고,
+   내부 길이 단위는 뷰포트(vw/vh)가 아니라 무대 기준(cqw/cqh)을 쓴다.
+   가로 모니터에서 vw로 잡으면 물방울이 커지면서 하단 달수를 덮는다. */
+#stage { position: relative; width: min(100vw, 56.25vh); height: min(100vh, 177.7778vw);
+  container-type: size; overflow: hidden; background: var(--paper); box-shadow: 0 0 4vh rgba(0,0,0,.45); }
 
 /* 일러스트 배경 (하늘·구름·해·언덕) — index.html 인라인 SVG */
 #bg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -16,7 +24,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--pape
 #stage[data-state="COUNTDOWN"] #cam, #stage[data-state="CAPTURE"] #cam { opacity: 1; }
 #fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
-.screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6vh 5vw; }
+.screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6cqh 5cqw; }
 #stage[data-state="IDLE"] #idle,
 #stage[data-state="GUIDE"] #guide,
 #stage[data-state="RIVER"] #story, #stage[data-state="NATURE"] #story, #stage[data-state="SWIM"] #story,
@@ -25,98 +33,134 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--pape
 #stage[data-state="PREVIEW"] #preview,
 #stage[data-state="DONE"] #done,
 #stage[data-state="ERROR"] #error { display: flex; animation: screenIn .5s cubic-bezier(.2,.8,.2,1) both; }
-@keyframes screenIn { from { opacity: 0; transform: translateY(2vh) } to { opacity: 1; transform: none } }
+@keyframes screenIn { from { opacity: 0; transform: translateY(2cqh) } to { opacity: 1; transform: none } }
 #stage[data-state="IDLE"] #idle, #stage[data-state="GUIDE"] #guide, #stage[data-state="RIVER"] #story, #stage[data-state="NATURE"] #story, #stage[data-state="SWIM"] #story, #stage[data-state="COUNTDOWN"] #countdown, #stage[data-state="PREVIEW"] #preview, #stage[data-state="DONE"] #done { animation: screenIn .5s cubic-bezier(.2,.8,.2,1) both; }
 
 /* 상단 고정 헤더 — 시안 1~4컷 (대기·터치 단계 내내 유지) */
-#head { position: absolute; top: 6.5vh; left: 0; right: 0; text-align: center; z-index: 3; pointer-events: none;
+#head { position: absolute; top: 6.5cqh; left: 0; right: 0; text-align: center; z-index: 3; pointer-events: none;
   opacity: 0; transition: opacity .5s; }
 #stage[data-state="IDLE"] #head, #stage[data-state="GUIDE"] #head { opacity: 1; }
-#head-title { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 5.4vw; line-height: 1.24; color: #1f5f86;
-  white-space: pre-line; text-shadow: 0 .3vh 0 #fff; }
-#head-sub { margin-top: 1.6vh; font-size: 2.35vw; line-height: 1.5; color: #4c5a66; white-space: pre-line; }
+#head-title { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 5.8cqw; line-height: 1.24; color: var(--deep);
+  white-space: pre-line; text-shadow: 0 .35cqh 0 #fff, 0 .9cqh 1.8cqh rgba(11,74,112,.18); -webkit-text-stroke: .12cqw var(--deep); }
+#head-sub { margin-top: 1.8cqh; font-size: 2.7cqw; line-height: 1.5; color: #1d4a63; white-space: pre-line; font-weight: 700; text-shadow: 0 .2cqh 0 rgba(255,255,255,.7); }
 
 /* 하단 중앙 달수 — 시안 1~2컷처럼 아래에서 빼꼼 */
-#stage-dalsu { position: absolute; left: 50%; bottom: -3vh; height: 34vh; transform: translateX(-50%);
+#stage-dalsu { position: absolute; left: 50%; bottom: -2cqh; height: 40cqh; transform: translateX(-50%);
   z-index: 1; opacity: 0; transition: opacity .5s; animation: bob 2.8s ease-in-out infinite;
-  filter: drop-shadow(0 1vh 1.4vh rgba(60,90,110,.22)); }
+  filter: drop-shadow(0 1cqh 1.4cqh rgba(60,90,110,.22)); }
 #stage[data-state="IDLE"] #stage-dalsu, #stage[data-state="GUIDE"] #stage-dalsu { opacity: 1; }
-@keyframes bob { 0%,100% { transform: translateX(-50%) translateY(0) } 50% { transform: translateX(-50%) translateY(-1.6vh) } }
+@keyframes bob { 0%,100% { transform: translateX(-50%) translateY(0) } 50% { transform: translateX(-50%) translateY(-1.6cqh) } }
 
 /* 대기 */
-#idle { justify-content: flex-end; padding-bottom: 36vh; }
-#idle p { font-size: 2.6vw; color: var(--ink2); animation: blink 1.8s infinite; }
+#idle { justify-content: flex-end; padding-bottom: 46cqh; }  /* 물방울과 하단 달수 사이 빈 자리에 — 달수에 가리지 않게 */
+#idle p { position: relative; z-index: 2; font-size: 3cqw; color: var(--accent); animation: blink 1.8s infinite;
+  text-shadow: 0 .25cqh 0 #fff; }
 @keyframes blink { 0%,100% { opacity: .95 } 50% { opacity: .45 } }
 
 /* 캡션 (말풍선 카드) */
-.caption { font-size: 3.3vw; color: var(--ink); background: rgba(255,255,255,.78); padding: 1.4vh 3vw; border-radius: 4vw;
-  border: .25vw solid #fff; box-shadow: 0 1vh 3vh rgba(60,90,110,.18); white-space: pre-line; line-height: 1.35; }
-.caption.big { font-size: 4vw; }
-#story .caption { position: absolute; top: 7vh; }
+.caption { font-size: 3.5cqw; color: var(--deep); background: rgba(255,255,255,.94); padding: 1.6cqh 3.4cqw; border-radius: 4cqw;
+  border: .45cqw solid #ffffff; box-shadow: 0 1.2cqh 3.2cqh rgba(11,58,88,.28); white-space: pre-line; line-height: 1.35; }
+.caption.big { font-size: 4.3cqw; }
+#story .caption { position: absolute; top: 2.5cqh; }
 
 /* 물방울 — 시안 1~4컷: 가로 1열 4개, 눈물방울 모양, 안에 아이콘 + 라벨 */
 #bubbles { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .5s; }
 #stage[data-state="IDLE"] #bubbles { opacity: 1; }                       /* 시안 1컷 — 보이지만 아직 못 누름 */
 #stage[data-state="GUIDE"] #bubbles { opacity: 1; pointer-events: auto; } /* 시안 2컷 — 터치 가능 */
-.bubble { position: absolute; width: 21vw; height: 27.7vw; transition: transform .25s; }
-.bubble .drop { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1.2vh 2.4vh rgba(60,90,110,.22)); }
+#stage[data-state="RIVER"] #bubbles { opacity: 1; }                        /* 시안 5컷 — 4개 목표 문구가 남은 채로 물길이 완성된다 */
+.bubble { position: absolute; width: 21cqw; height: 27.7cqw; transition: transform .25s; }
+.bubble .drop { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }
 .bubble .inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding-top: 16%; gap: .8vh; }
-.bubble svg.icon { width: 8.4vw; height: 8.4vw; }
-.bubble .label { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.5vw; color: var(--ink); }
+  padding-top: 16%; gap: .8cqh; }
+.bubble svg.icon { width: 8.4cqw; height: 8.4cqw; }
+.bubble .label { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
+  text-shadow: 0 .22cqh .5cqh rgba(8,58,86,.55), 0 0 .35cqh rgba(8,58,86,.4); }
 .bubble:active { transform: scale(.95); }
 .bubble.popped .drop, .bubble.popped .inner { animation: dropPop .45s cubic-bezier(.2,.9,.3,1.3) forwards; }
 @keyframes dropPop { 0% { transform: scale(1); opacity: 1 } 40% { transform: scale(1.18) } 100% { transform: scale(1.5); opacity: 0 } }
 /* 터진 자리에 목표 문구가 남는다 (시안 3~4컷) */
 .bubble .done { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .5vw; font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.35vw; line-height: 1.34; color: #1f5f86; text-align: center; }
+  padding: 0 .4cqw; font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.95cqw; line-height: 1.3; color: #063a5c; text-align: center;
+  -webkit-text-stroke: .1cqw #063a5c;
+  text-shadow: 0 0 .8cqh #fff, 0 0 1.6cqh rgba(255,255,255,.95), 0 .3cqh 0 rgba(255,255,255,.9); }
 .bubble.popped .done { display: flex; animation: doneIn .5s .3s cubic-bezier(.2,.9,.3,1.3) both; }
-@keyframes doneIn { 0% { transform: translateY(1.4vh) scale(.9); opacity: 0 } 100% { transform: none; opacity: 1 } }
+@keyframes doneIn { 0% { transform: translateY(1.4cqh) scale(.9); opacity: 0 } 100% { transform: none; opacity: 1 } }
 
 /* 손가락 터치 커서 — 시안 2컷 */
-#guide-hand { position: absolute; z-index: 4; width: 9vw; pointer-events: none; opacity: 0;
+#guide-hand { position: absolute; z-index: 4; width: 9cqw; pointer-events: none; opacity: 0;
   transition: left .5s, top .5s, opacity .3s; animation: tap 1.15s ease-in-out infinite;
-  filter: drop-shadow(0 .8vh 1.2vh rgba(60,90,110,.28)); }
+  filter: drop-shadow(0 .8cqh 1.2cqh rgba(60,90,110,.28)); }
 #guide-hand svg { width: 100%; height: auto; display: block; }
-@keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6vw,-1.4vh) } }
-#guide-text { transition: opacity .35s; position: absolute; left: 5vw; bottom: 17vh; z-index: 3; font-family: "Jua", "Malgun Gothic", sans-serif;
-  font-size: 3.2vw; line-height: 1.32; color: #1f5f86; white-space: pre-line; text-align: center; text-shadow: 0 .25vh 0 #fff; }
+@keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6cqw,-1.4cqh) } }
+#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; bottom: 17cqh; z-index: 3; font-family: "Jua", "Malgun Gothic", sans-serif;
+  font-size: 3.5cqw; line-height: 1.32; color: var(--deep); white-space: pre-line; text-align: center;
+  text-shadow: 0 .28cqh 0 #fff, 0 .6cqh 1.4cqh rgba(11,74,112,.2); }
 
 /* 카운트다운 (카메라 위) */
 #countdown { background: linear-gradient(180deg, rgba(47,58,68,.12), rgba(47,58,68,.35)); }
-#countdown .caption { color: #fff; background: none; border: 0; box-shadow: none; text-shadow: 0 .4vh 1.8vh rgba(0,0,0,.35); }
-#count-num { font-size: 40vw; line-height: 1; color: #fff; text-shadow: 0 1.2vh 4vh rgba(0,0,0,.35); }
-#count-num { position: relative; width: 46vw; height: 46vw; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1.2vw solid rgba(255,255,255,.85); box-shadow: 0 0 0 1.2vw rgba(255,255,255,.18), 0 2vh 6vh rgba(0,0,0,.3); background: rgba(255,255,255,.12); backdrop-filter: blur(2px); }
+#countdown .caption { color: #fff; background: none; border: 0; box-shadow: none; text-shadow: 0 .4cqh 1.8cqh rgba(0,0,0,.35); }
+#count-num { font-size: 40cqw; line-height: 1; color: #fff; text-shadow: 0 1.2cqh 4cqh rgba(0,0,0,.35); }
+#count-num { position: relative; width: 46cqw; height: 46cqw; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1.2cqw solid rgba(255,255,255,.85); box-shadow: 0 0 0 1.2cqw rgba(255,255,255,.18), 0 2cqh 6cqh rgba(0,0,0,.3); background: rgba(255,255,255,.12); backdrop-filter: blur(2px); }
 #count-num.pulse { animation: pulse 1s cubic-bezier(.2,.9,.3,1.2); }
 @keyframes pulse { 0% { transform: scale(1.35); opacity: 0 } 25% { opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
 
 /* 촬영 화면 비우기(captureOverlay=false): 카메라 위에 아무것도 겹치지 않게 —
    AR 오버레이는 renderer가 안 그리고, 카운트다운도 딤·원판 없이 숫자만 하단에 띄운다. */
 #stage[data-capture-overlay="off"] #countdown { background: none; justify-content: flex-start; }
-#stage[data-capture-overlay="off"] #countdown .caption { position: absolute; top: 4vh; }
-#stage[data-capture-overlay="off"] #count-num { width: 20vw; height: 20vw; margin-top: 9vh; font-size: 11vw; color: #1f5f86;
-  border: .7vw solid rgba(255,255,255,.95); border-radius: 50%; background: rgba(255,255,255,.82); backdrop-filter: blur(2px);
-  box-shadow: 0 1.2vh 3vh rgba(0,0,0,.28); -webkit-text-stroke: 0; text-shadow: none; }
+#stage[data-capture-overlay="off"] #countdown .caption { position: absolute; top: 4cqh; }
+#stage[data-capture-overlay="off"] #count-num { width: 22cqw; height: 22cqw; margin-top: 8cqh; font-size: 12.5cqw; color: var(--deep);
+  border: .9cqw solid #ffffff; border-radius: 50%; background: rgba(255,255,255,.94); backdrop-filter: blur(2px);
+  box-shadow: 0 1.4cqh 3.4cqh rgba(0,0,0,.38); -webkit-text-stroke: 0; text-shadow: none; font-weight: 700; }
 /* 밝은 배경(흰 옷·조명)에서도 읽히도록 캡션만 옅은 알약 — 상단이라 얼굴은 가리지 않는다 */
-#stage[data-capture-overlay="off"] #countdown .caption { background: rgba(47,58,68,.42); border: 0; padding: 1.2vh 3vw; border-radius: 4vw; text-shadow: 0 .3vh .8vh rgba(0,0,0,.45); }
+#stage[data-capture-overlay="off"] #countdown .caption { background: rgba(10,40,58,.62); color: #fff; border: .3cqw solid rgba(255,255,255,.5);
+  padding: 1.4cqh 3.4cqw; border-radius: 4cqw; text-shadow: 0 .3cqh .9cqh rgba(0,0,0,.55); }
 
 /* 미리보기 */
-#preview { background: rgba(47,58,68,.55); justify-content: center; gap: 2.4vh; }
+/* 미리보기·완료 — 같은 화면을 이어서 쓴다 (카드가 사라졌다 다시 나타나면 흐름이 끊긴다) */
+#stage[data-state="DONE"] #preview { display: flex; animation: none; }
+#preview { background: linear-gradient(180deg, rgba(9,48,70,.62), rgba(6,35,52,.72)); justify-content: center; gap: 2.6cqh; }
 #preview .caption.big { color: #1f5f86; }
-#printer { width: 34vw; }
-#printer svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 1.4vh 2.6vh rgba(0,0,0,.35)); }
-#card { width: 78vw; height: auto; border-radius: 2.4vw; box-shadow: 0 3vh 7vh rgba(0,0,0,.4); border: .7vw solid #fff; background: #fff; animation: cardIn .8s cubic-bezier(.2,.9,.3,1.2) both; }
-@keyframes cardIn { 0% { transform: translateY(8vh) scale(.92) rotate(-2deg); opacity: 0 } 100% { transform: none; opacity: 1 } }
-#print-progress { width: 70vw; height: 2.2vh; background: rgba(255,255,255,.35); border-radius: 1.1vh; overflow: hidden; }
-#print-bar { width: 0; height: 100%; background: linear-gradient(90deg, var(--water), var(--leaf)); transition: width linear; }
-#preview-text { font-size: 2.6vw; color: #fff; background: none; border: 0; box-shadow: none; }
+#printer { width: 44cqw; --out: 0; }
+/* 카드가 배출구에서 밀려나온다. --out 0=완전히 안 / 1=완전히 나옴.
+   140 은 SVG 좌표계의 카드 높이 — 0일 때 카드가 몸체 뒤에 완전히 숨는다. */
+#printer #pcard { transform: translateY(calc((var(--out) - 1) * 140px));
+  transition: transform 1.1s cubic-bezier(.25,.9,.35,1); }
+/* 인쇄 중에는 LED가 깜빡여 '동작 중'을 알린다 — 멈춘 화면과 구별되는 유일한 단서다 */
+#printer[data-busy="1"] #pled { animation: ledBlink 1s steps(1, end) infinite; }
+@keyframes ledBlink { 0%, 55% { fill: #9bd18a } 56%, 100% { fill: #dfeee0 } }
+#printer svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 1.4cqh 2.6cqh rgba(0,0,0,.35)); }
+#card { width: 52cqw; height: auto; border-radius: 2.4cqw; box-shadow: 0 3cqh 7cqh rgba(0,0,0,.4); border: .7cqw solid #fff; background: #fff; animation: cardIn .8s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes cardIn { 0% { transform: translateY(8cqh) scale(.92) rotate(-2deg); opacity: 0 } 100% { transform: none; opacity: 1 } }
+#print-progress { width: 56cqw; height: 1.5cqh; background: rgba(255,255,255,.18); border: .16cqw solid rgba(255,255,255,.32);
+  border-radius: 1cqh; overflow: hidden; box-shadow: inset 0 .2cqh .5cqh rgba(0,0,0,.2); margin-top: 1.2cqh; }
+/* 진행바는 실제 인쇄 단계에 따라 움직인다(타이머 아님).
+   한 단계가 오래 걸릴 때 멈춰 보이지 않도록, 대기 중에는 줄무늬가 흐른다. */
+#print-bar { width: 0; height: 100%; background: linear-gradient(90deg, #34a7d6, #4fc17a);
+  transition: width .6s cubic-bezier(.3,.9,.4,1); box-shadow: 0 0 1.4cqh rgba(80,200,180,.7);
+  position: relative; overflow: hidden; }
+#print-bar[data-waiting="1"]::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(115deg,
+    rgba(255,255,255,.30) 0 1.6cqw, rgba(255,255,255,0) 1.6cqw 4.4cqw);
+  animation: printStripes 1.1s linear infinite;
+}
+@keyframes printStripes { to { transform: translateX(4.4cqw); } }
+#stage[data-state="DONE"] #print-bar { width: 100% !important; transition: width .4s ease-out; }
+#stage[data-state="DONE"] #preview-title { animation: pulse 1s cubic-bezier(.2,.9,.3,1.2); }
+#preview-text { font-size: 3.6cqw; color: #fff; background: none; border: 0; box-shadow: none; font-weight: 700;
+  text-shadow: 0 .3cqh 1cqh rgba(0,0,0,.5); }
 
-#done .caption.big { background: #fff; }
+#done { display: none !important; }  /* 완료 안내는 미리보기 화면 위에서 이어서 보여준다 */
 #error { background: rgba(47,58,68,.6); }
-#error .caption.big { background: #fff; color: #b03a2e; }
-#error button { margin-top: 4vh; font-family: "Jua", sans-serif; font-size: 2.8vw; padding: 2vh 5vw; border: 0; border-radius: 2vw; background: #fff; color: var(--accent); }
+#error .caption.big { background: #fff; color: #9c2e22; font-weight: 700; }
+#error button { margin-top: 4cqh; font-family: "Jua", sans-serif; font-weight: 700; font-size: 3.2cqw; padding: 2.2cqh 5.4cqw;
+  border: .4cqw solid var(--accent); border-radius: 2cqw; background: #fff; color: var(--accent); }
 /* 운영자 종료 히트존 — 완전 투명, 우상단. 어떤 화면에서도 눌리도록 최상단 z-index */
-#exit-hit { position: absolute; top: 0; right: 0; width: 14vw; height: 9vh; z-index: 999; background: transparent; opacity: 0; }
+#exit-hit { position: absolute; top: 0; right: 0; width: 14cqw; height: 9cqh; z-index: 999; background: transparent; opacity: 0; }
+/* 빌드 표시 — 대기 화면에서만, 아주 작게. 현장에서 어떤 버전이 돌고 있는지 확인용 */
+#build-tag { position: absolute; left: 1.2cqw; bottom: .8cqh; z-index: 998; font-size: 1.05cqw; letter-spacing: .02em;
+  color: rgba(20,60,84,.34); pointer-events: none; opacity: 0; transition: opacity .4s; }
+#stage[data-state="IDLE"] #build-tag { opacity: 1; }
 #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 #flash.on { animation: flash .35s ease-out; }
 @keyframes flash { 0% { opacity: 1 } 100% { opacity: 0 } }

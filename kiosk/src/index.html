@@ -13,10 +13,10 @@
     <svg id="bg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#dceef8"/><stop offset="0.55" stop-color="#eaf5fb"/><stop offset="1" stop-color="#f4fafd"/>
+          <stop offset="0" stop-color="#b9dcf1"/><stop offset="0.5" stop-color="#d8ecf8"/><stop offset="1" stop-color="#eef7fc"/>
         </linearGradient>
         <radialGradient id="glow" cx="50%" cy="34%" r="62%">
-          <stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="0" stop-color="#ffffff" stop-opacity=".7"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
         </radialGradient>
       </defs>
       <rect width="1080" height="1920" fill="url(#sky)"/>
@@ -66,7 +66,7 @@
     <!-- 미리보기 + 출력 (시안 8컷) -->
     <section id="preview" class="screen">
       <p class="caption big" id="preview-title"></p>
-      <canvas id="card" width="1012" height="636"></canvas>
+      <canvas id="card" width="636" height="1012"></canvas>
       <div id="printer"></div>
       <div id="print-progress"><div id="print-bar"></div></div>
       <p class="caption" id="preview-text"></p>
@@ -76,6 +76,7 @@
     <section id="done" class="screen"><p class="caption big" id="done-text"></p></section>
     <section id="error" class="screen"><p class="caption big" id="error-text"></p><button id="error-reset">처음으로</button></section>
 
+    <div id="build-tag"></div>
     <div id="flash"></div>
     <!-- 운영자 전용: 우상단 투명 영역 3회 연속 터치 시 앱 종료 (화면에는 보이지 않음) -->
     <div id="exit-hit" aria-hidden="true"></div>
