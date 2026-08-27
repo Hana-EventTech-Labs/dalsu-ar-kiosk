@@ -251,6 +251,7 @@
   function runStory() {
     clearTimers(); setState(); // RIVER
     $('story-text').textContent = cfg.screen.achieveText; $('story-text').style.display = '';
+    tribShell = null;              // 관람객이 바뀌면 다시 자라야 한다
     anim.riverProgress = 0; anim.natureCount = 0; anim.swimU = -1; anim.arFade = 1; anim.enter = 0; anim.life = 0;
     anim.tribProgress = 0; anim.tribFade = 1; anim.mergeFlash = 0;
     anim.t0 = performance.now(); anim.sparkled.clear();
@@ -538,7 +539,10 @@
     const p = Math.min(1, progress);
     const RV = cfg.river || {};
     const width = H * widthRatio;
-    const pts = samplesRange(box ? 96 : (p < 0.999 ? segMain() : RIVER_SEG), 0, p, box).map(([x, y]) => [x * W, y * H]);
+    // 구간 수는 '그려지는 길이'에 비례해야 한다. 진행도 10% 짜리 짧은 물길에 200구간을 쓰면
+    // 이음매 품질은 그대로인데 비용만 10배다 — 물길이 자라는 구간에서 프레임이 튀던 원인.
+    const seg = box ? 96 : (p < 0.999 ? Math.max(24, Math.round(RIVER_SEG * p)) : RIVER_SEG);
+    const pts = samplesRange(seg, 0, p, box).map(([x, y]) => [x * W, y * H]);
     if (RV.style === 'cartoon') {
       ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       for (const layer of ART_RIVER) {
@@ -576,6 +580,7 @@
   // 클립을 쓰지 않으므로 이 값이 곧 곡선 바깥의 이음매 크기를 정한다 — 촘촘할수록 이음매가 사라진다.
   const RIVER_SEG = 260;
   let shell = null;
+  let tribShell = null;   // 다 자란 지류 4줄기 (이후엔 알파만 변한다)
   function riverOpts(H) {
     const RV = cfg.river || {};
     return { tilePx: (RV.tilePx || 460) * (H / 1920), minTaper: RV.minTaper };
@@ -760,7 +765,7 @@
   ];
   const PERF = {
     mode: (cfg.river && cfg.river.quality) || 'auto',   // auto | high | low
-    step: 0, frames: 0, sum: 0, worst: 0, since: performance.now(), reported: 0,
+    step: 0, frames: 0, sum: 0, sq: 0, late: 0, worst: 0, since: performance.now(), reported: 0,
   };
   if (PERF.mode === 'low') PERF.step = 2;
   const perfNow = () => PERF_STEPS[PERF.step];
@@ -769,6 +774,8 @@
 
   function perfTick(frameMs) {
     PERF.frames++; PERF.sum += frameMs; if (frameMs > PERF.worst) PERF.worst = frameMs;
+    PERF.sq += frameMs * frameMs;                    // 흔들림(표준편차)용
+    if (frameMs > 20) PERF.late++;                   // 60fps 를 놓친 프레임 수 — '부드럽지 않다'의 실체
     // 프레임 수 하한을 25로 두면 **가장 느릴 때 로그가 침묵한다**(6초 동안 25프레임도 못 그리면 보고가 없다).
     // 진단이 제일 필요한 순간이므로 하한은 낮게 잡는다.
     if (performance.now() - PERF.since < 1500 || PERF.frames < 6) return;
@@ -783,9 +790,12 @@
       PERF.reported++;
       log('INFO', '렌더 성능', Object.assign({ frameAvgMs: +avg.toFixed(1), fps: +(1000 / avg).toFixed(0),
         worstMs: +PERF.worst.toFixed(0),   // 끊김은 평균이 아니라 최악 프레임으로 느껴진다
+        // 부드러움은 '평균'이 아니라 '고르기'다. 흔들림이 크면 60fps 라도 덜컹거린다.
+        흔들림: +Math.sqrt(Math.max(0, PERF.sq / PERF.frames - avg * avg)).toFixed(1),
+        놓친프레임: +(PERF.late / PERF.frames * 100).toFixed(0) + '%',
         step: PERF.step, level: perfNow().level, state: flow.state }, perfBreakdown(PERF.frames)));
     }
-    PERF.frames = 0; PERF.sum = 0; PERF.worst = 0; PERF.since = performance.now();
+    PERF.frames = 0; PERF.sum = 0; PERF.sq = 0; PERF.late = 0; PERF.worst = 0; PERF.since = performance.now();
   }
 
   // 구간별 소요 — 어디가 느린지 추측하지 않고 로그로 확인한다(현장 PC 진단용)
@@ -802,13 +812,21 @@
     const now = performance.now(), rawDt = now - lastFrame;
     // 애니메이션은 큰 dt 로 튀면 안 되므로 0.05초로 자르지만, 성능 측정은 자르지 않은 실제 간격을 쓴다.
     const dt = Math.min(0.05, rawDt / 1000); lastFrame = now;
-    anim.flow += dt * ((cfg.river && cfg.river.flowPxPerSec) || 95); // 강물 흐름 누적 거리(px)
+    // 흐름 거리를 dt 로 누적하면 프레임 간격이 흔들리는 만큼 물결도 흔들린다.
+    // 절대 시간의 함수로 두면 프레임이 늦게 와도 물결 위치는 정확히 그 시각의 값이라 고르게 흐른다.
+    anim.flow = (now - anim.t0) / 1000 * ((cfg.river && cfg.river.flowPxPerSec) || 95);
 
     const W = fx.clientWidth, H = fx.clientHeight;
     if (fx.width !== W || fx.height !== H) { fx.width = W; fx.height = H; }  // 항상 1:1 픽셀 — 화질 손실 없음
     fxCtx.clearRect(0, 0, W, H);
     if (anim.mergeFlash > 0) anim.mergeFlash = Math.max(0, anim.mergeFlash - dt * 2.2);
     const st = flow.state;
+    // 물길 정적 캐시는 굽는 데 ~100ms 가 든다. 완성되는 순간에 구우면 하필 가장 눈에 띄는 프레임이 튄다.
+    // 완성된 물길의 기하는 시작부터 정해져 있으므로, 아무것도 움직이지 않는 대기 화면에서 미리 구워 둔다.
+    if (!shell && A.water && W > 0 && H > 0 && (st === 'IDLE' || st === 'GUIDE')) {
+      const full = samplesRange(RIVER_SEG, 0, 1, null).map(([x, y]) => [x * W, y * H]);
+      riverShell(W, H, full, H * ((cfg.river && cfg.river.widthRatio) || 0.105));
+    }
     if ((st === 'IDLE' || st === 'GUIDE') && Math.random() < dt * 1.5) particles.ambient(W, H); // 배경 방울 떠오름
     if (st === 'RIVER' && anim.riverProgress > 0 && anim.riverProgress < 1 && Math.random() < 0.6) { const [hx, hy] = pointAt(anim.riverProgress); particles.sparkle(hx * W, hy * H, 1, '#ffffff'); }
     const onCam = st === 'COUNTDOWN' || st === 'CAPTURE';
@@ -831,10 +849,30 @@
     if ((st === 'RIVER' || st === 'NATURE') && anim.tribFade > 0.01 && tribs.length) {
       const t0 = performance.now();
       const tw = H * ((cfg.river && cfg.river.tributaryWidthRatio) || 0.032);
+      const topt = (q) => ({ tilePx: 340 * (H / 1920),
+        minTaper: (cfg.river && cfg.river.tributaryMinTaper) || 0.62,
+        endTaper: (cfg.river && cfg.river.tributaryEndTaper) || 1.12,
+        bank: false, glare: false, depth: false, noClip: true, quality: q });
+      const grown = anim.tribProgress > 0.999;
+      // 다 자란 뒤엔 모양이 더는 바뀌지 않는다 — 남은 변화는 페이드(알파)뿐이라 한 번 구워 붙이면 된다.
+      // 4줄기를 매 프레임 다시 그리는 건 합류 직전, 즉 가장 중요한 순간에 프레임을 잡아먹는다.
+      if (grown && (!tribShell || tribShell.key !== W + 'x' + H)) {
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const c = cv.getContext('2d');
+        for (const t of tribs) {
+          const pts = tributarySamples(t.path, segTrib(), 1).map(([x, y]) => [x * W, y * H]);
+          drawFlowingRiver(c, pts, tw, A.water, 0, topt('high'));   // 한 번뿐이라 고품질로
+        }
+        tribShell = { key: W + 'x' + H, cv };
+        log('INFO', '지류 캐시 생성', { w: W, h: H });
+      }
       fxCtx.save(); fxCtx.globalAlpha = anim.tribFade;
-      for (const t of tribs) {
-        const pts = tributarySamples(t.path, segTrib(), anim.tribProgress).map(([x, y]) => [x * W, y * H]);
-        drawFlowingRiver(fxCtx, pts, tw, A.water, anim.flow, { tilePx: 340 * (H / 1920), minTaper: (cfg.river && cfg.river.tributaryMinTaper) || 0.62, endTaper: (cfg.river && cfg.river.tributaryEndTaper) || 1.12, bank: false, glare: false, depth: false, quality: 'low', noClip: true, uSpan: anim.tribProgress });
+      if (grown && tribShell) fxCtx.drawImage(tribShell.cv, 0, 0);
+      else for (const t of tribs) {
+        const n = Math.max(10, Math.round(segTrib() * anim.tribProgress));
+        const pts = tributarySamples(t.path, n, anim.tribProgress).map(([x, y]) => [x * W, y * H]);
+        const o = topt('low'); o.uSpan = anim.tribProgress;
+        drawFlowingRiver(fxCtx, pts, tw, A.water, anim.flow, o);
       }
       fxCtx.restore();
       tick('지류', t0);
