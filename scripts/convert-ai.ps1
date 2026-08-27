@@ -19,12 +19,13 @@ function AwaitAction($op) { $t = $asTaskPlain.Invoke($null, @($op)); $t.Wait() }
 
 # 원본 파일 → 출력 이름 매핑 (페이지 1 기준, 턴어라운드는 왼쪽부터 정면/¾/측면/후면 4컷을 가로 4등분)
 $jobs = @(
-  @{ src = 'dalsu-basic-turnaround.ai.pdf';    out = 'dalsu-front.png'; slice = 0; of = 4 },
-  @{ src = 'dalsu-basic-turnaround.ai.pdf';    out = 'dalsu-side.png';  slice = 0; of = 1; rect = @(0.513, 0.15, 0.23, 0.85) },
+  # 달수는 '옷 입은(탐험가 복장)' 버전으로 통일한다 (2026-08-26 확정). 파일명은 CLAUDE.md 규약대로 고정.
+  @{ src = 'dalsu-explorer-turnaround.ai.pdf'; out = 'dalsu-front.png';          slice = 0; of = 4 },  # 정면 서기 — 대기/가이드 하단
+  @{ src = 'dalsu-explorer-turnaround.ai.pdf'; out = 'dalsu-side.png';           slice = 2; of = 4 },  # 측면 서기 — 가이드 보조
   @{ src = 'dalsu-explorer-turnaround.ai.pdf'; out = 'dalsu-explorer-front.png'; slice = 0; of = 4 },
-  @{ src = 'dalsu-lying-float.ai.pdf';         out = 'dalsu-float.png'; slice = 1; of = 2 },
-  @{ src = 'dalsu-lying-2.ai.pdf';             out = 'dalsu-lying.png'; slice = 0; of = 2 },
-  @{ src = 'dalsu-sticker-face.ai.pdf';        out = 'dalsu-face.png';  slice = 0; of = 1; rect = @(0.22, 0.13, 0.56, 0.28) }
+  @{ src = 'dalsu-lying-2.ai.pdf';             out = 'dalsu-float.png';          slice = 1; of = 2 },  # 옷 입고 엎드린 포즈 — 물길 헤엄
+  @{ src = 'dalsu-lying-2.ai.pdf';             out = 'dalsu-lying.png';          slice = 1; of = 2 },
+  @{ src = 'dalsu-sticker-face.ai.pdf';        out = 'dalsu-face.png';           slice = 0; of = 1; rect = @(0.22, 0.13, 0.56, 0.28) }
 )
 
 function Render-Page([string]$path, [int]$scale) {

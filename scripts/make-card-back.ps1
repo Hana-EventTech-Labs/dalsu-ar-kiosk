@@ -1,11 +1,12 @@
-﻿# 포토카드 뒷면 기본 디자인 생성 (1012×636) — 달수 얼굴 + 행사명 + SAMSUNG 문구.
+﻿# 포토카드 뒷면 기본 디자인 생성 — kiosk/config.json 의 card.width/height 를 따른다(가로 1012×636 / 세로 636×1012) — 달수 얼굴 + 행사명 + SAMSUNG 문구.
 # 최종 디자인(그래픽 소스 제작 항목)이 나오면 kiosk/assets/card-back.png만 덮어쓰면 된다.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent
 $assets = Join-Path $root 'kiosk\assets'
 $cfg = Get-Content (Join-Path $root 'kiosk\config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-$W = 1012; $H = 636
+$W = [int]$cfg.card.width; $H = [int]$cfg.card.height
+Write-Host ("뒷면 카드 규격: {0}x{1} ({2})" -f $W, $H, $cfg.card.orientation)
 $bmp = New-Object System.Drawing.Bitmap $W, $H
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.SmoothingMode = 'AntiAlias'; $g.TextRenderingHint = 'AntiAliasGridFit'; $g.InterpolationMode = 'HighQualityBicubic'
