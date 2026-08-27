@@ -130,7 +130,7 @@
 
   // FX 애니메이션 상태 + 파티클/효과음 (motion.js)
   const SWIM_STROKES = 5;   // 헤엄 스트로크 횟수 — swimEase 와 swimPose 가 같은 값을 써야 몸짓과 전진이 맞물린다
-  const anim = { riverProgress: 0, natureCount: 0, swimU: -1, swimP: 0, enter: 0, life: 0, arFade: 1, flow: 0, tribProgress: 0, tribFade: 0, mergeFlash: 0, t0: performance.now(), popped: [], lastWake: 0, sparkled: new Set() };
+  const anim = { wake: [], riverProgress: 0, natureCount: 0, swimU: -1, swimP: 0, enter: 0, life: 0, arFade: 1, flow: 0, tribProgress: 0, tribFade: 0, mergeFlash: 0, t0: performance.now(), popped: [], lastWake: 0, sparkled: new Set() };
   const particles = createParticles();
   const sound = createSound(!!(cfg.sound && cfg.sound.enabled) && !SMOKE);
 
@@ -252,6 +252,7 @@
     clearTimers(); setState(); // RIVER
     $('story-text').textContent = cfg.screen.achieveText; $('story-text').style.display = '';
     tribShell = null;              // 관람객이 바뀌면 다시 자라야 한다
+    anim.wake.length = 0;
     anim.riverProgress = 0; anim.natureCount = 0; anim.swimU = -1; anim.arFade = 1; anim.enter = 0; anim.life = 0;
     anim.tribProgress = 0; anim.tribFade = 1; anim.mergeFlash = 0;
     anim.t0 = performance.now(); anim.sparkled.clear();
@@ -659,22 +660,91 @@
       if (k >= 1 && !anim.sparkled.has(i) && sway) { anim.sparkled.add(i); particles.sparkle(x, y - size * 0.3, 6, '#fbe7a1'); sound.bloom(); }
     }
   }
+  // ---------- V자 항적 ----------
+  // 헤엄치는 무언가가 지나갔다는 가장 확실한 신호는 뒤에 남는 V자다.
+  // 파티클 물보라만으로는 '물이 튄다'까지고, '지나갔다'가 안 된다.
+  // 지나온 좌표를 짧게 기억했다가, 나이가 들수록 벌어지고 흐려지는 두 줄로 그린다.
+  const WAKE_LIFE = 1600;
+  function pushWake(x, y, heading, now) {
+    const w = anim.wake;
+    const last = w[w.length - 1];
+    if (last && now - last.t < 40) return;          // 40ms 간격이면 충분히 촘촘하다
+    w.push({ x, y, a: heading, t: now });
+    if (w.length > 60) w.shift();
+  }
+  function drawWakeTrail(ctx, now, H) {
+    const w = anim.wake;
+    while (w.length && now - w[0].t > WAKE_LIFE) w.shift();
+    if (w.length < 2) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 1; i < w.length; i++) {
+      const a = w[i - 1], b = w[i];
+      const age = (now - b.t) / WAKE_LIFE;
+      if (age >= 1) continue;
+      // 나이가 들수록 벌어진다 — 이게 V자를 만든다
+      const spread = H * (0.010 + age * 0.055);
+      const alpha = (1 - age) * (1 - age) * 0.62;   // 처음엔 또렷하고 빠르게 사라진다
+      const na = a.a + Math.PI / 2, nb = b.a + Math.PI / 2;
+      const sa = H * (0.010 + ((now - a.t) / WAKE_LIFE) * 0.055);
+      // 실제 항적은 '어두운 골 + 흰 마루'다. 흰 선만 그으면 수면의 흰 물결 무늬에 그대로 묻힌다.
+      for (const layer of [
+        { c: '13,52,76', w: H * 0.015, a: alpha * 1.15, o: H * 0.005 },
+        { c: '255,255,255', w: H * 0.006, a: alpha * 1.25, o: 0 },
+      ]) {
+        ctx.lineWidth = layer.w * (1 - age * 0.45);
+        ctx.strokeStyle = `rgba(${layer.c},${(layer.a).toFixed(3)})`;
+        for (const side of [1, -1]) {
+          const oa = (sa + layer.o) * side, ob = (spread + layer.o) * side;
+          ctx.beginPath();
+          ctx.moveTo(a.x + Math.cos(na) * oa, a.y + Math.sin(na) * oa);
+          ctx.lineTo(b.x + Math.cos(nb) * ob, b.y + Math.sin(nb) * ob);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
   // 달수 헤엄 — 몸통 흔들림·상하 부침·물 밀기 늘어남 + 진행 방향 회전. swimming=false면 정지 부유.
-  function drawDalsuSwim(ctx, img, x, y, h, heading, theta, swimming) {
+  function drawDalsuSwim(ctx, img, x, y, h, heading, theta, swimming, bank) {
     const w = img.width * (h / img.height);
     const pose = swimming ? swimPose(theta)
       : { roll: Math.sin(theta * 0.35) * 0.035, bob: Math.sin(theta * 0.35) * 0.5, sx: 1, sy: 1, sink: 0.5, push: 0 };
     const bobPx = pose.bob * h * 0.075;
+    // 수면이 몸무게에 눌려 파인다 — 어두운 웅덩이 + 그 둘레의 흰 물마루.
+    // 이게 없으면 아무리 잘 그려도 물 '위에 얹힌' 그림이 된다. 몸보다 먼저 깔아야 한다.
+    if (swimming) {
+      const dipR = w * 0.46, sink = 1 - pose.sink;
+      const g = ctx.createRadialGradient(x, y + bobPx + h * 0.10, dipR * 0.15, x, y + bobPx + h * 0.10, dipR);
+      g.addColorStop(0, `rgba(14,60,86,${(0.20 + sink * 0.14).toFixed(3)})`);
+      g.addColorStop(0.62, `rgba(20,80,110,${(0.10 + sink * 0.08).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(20,80,110,0)');
+      ctx.save();
+      ctx.translate(x, y + bobPx + h * 0.10); ctx.scale(1, 0.52); ctx.translate(-x, -(y + bobPx + h * 0.10));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y + bobPx + h * 0.10, dipR, 0, Math.PI * 2); ctx.fill();
+      // 파인 자리 둘레의 흰 물마루
+      ctx.strokeStyle = `rgba(255,255,255,${(0.22 + pose.push * 0.20).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1.2, h * 0.020);
+      ctx.beginPath(); ctx.arc(x, y + bobPx + h * 0.10, dipR * 0.74, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
     ctx.save();
     ctx.translate(x, y + bobPx);
     // 곡선을 돌 때 머리가 먼저 돌고 몸이 따라온다 — 회전을 진행 방향보다 살짝 덜 주고 흔들림을 얹는다
-    ctx.rotate(heading * 0.07 + pose.roll);
+    // 굽이를 돌 때 몸을 안쪽으로 기울인다(뱅킹). 곡선인데 몸이 꼿꼿하면 레일 위를 가는 것처럼 보인다.
+    ctx.rotate(heading * 0.07 + pose.roll + (bank || 0));
     ctx.scale(pose.sx, pose.sy);
     // 수면 그림자 — 몸이 가라앉을수록 진하고 넓어진다
     ctx.save();
     ctx.globalAlpha = 0.14 + (1 - pose.sink) * 0.16; ctx.fillStyle = '#12506f';
     ctx.beginPath(); ctx.ellipse(0, h * 0.30, w * (0.34 + (1 - pose.sink) * 0.12), h * 0.065, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
+    // 몸은 통짜로 그린다. 길이 방향으로 잘라 굽이치게 하는 방법을 시도했다가 뺐다 —
+    // 물고기 실루엣이라면 통하지만, 모자·가방까지 그려진 캐릭터 일러스트는 조각 경계가 그대로 찢겨 보인다.
+    // 살아 있는 느낌은 몸을 일그러뜨려서가 아니라 **물이 반응하게** 해서 낸다(항적·물 파임·물보라).
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
     // 뱃머리 파도 — 진행 방향 앞쪽으로 밀리는 흰 물결
@@ -898,7 +968,24 @@
         // 둑에 얹힌 것처럼 보인다. 겸사겸사 '멀면 작고 가까우면 크게'라는 원근도 맞아떨어진다.
         const mt = riverOpts(H).minTaper;
         const wRel = Math.min(1.15, Math.max(0.62, widthAt(u, mt) / widthAt(0.5, mt)));
-        const h = H * 0.09 * wRel, swimming = st === 'SWIM' && anim.swimU < 0.5;
+        let h = H * 0.09 * wRel;
+        // 달수는 가로로 누운 자세라, 물길이 비스듬히 흐르는 굽이에서는 몸이 띠를 **대각으로 가로지른다**.
+        // 띠 폭만 보고 크기를 정하면 그 자리에서 잔디를 밟는다 — 진행 방향의 기울기를 함께 봐야 한다.
+        let curve = 0;
+        {
+          let dA = angleAt(Math.min(1, u + 0.03)) - angleAt(Math.max(0, u - 0.03));
+          while (dA > Math.PI) dA -= Math.PI * 2;
+          while (dA < -Math.PI) dA += Math.PI * 2;
+          curve = dA;
+          const bandW = H * ((cfg.river && cfg.river.widthRatio) || 0.105) * widthAt(u, mt);
+          const aspect = (d.width / d.height) || 1.4;
+          const cross = Math.max(0.35, Math.abs(Math.sin(angleAt(u))));  // 수평 길이가 띠를 가로지르는 비율
+          // 굽이가 급하면 띠의 안쪽이 오므라들어 실제로 그릴 수 있는 폭이 계산값보다 좁다.
+          // 곡률만큼 더 줄여야 굽이에서 잔디를 밟지 않는다.
+          const bend = 1 - Math.min(0.30, Math.abs(dA) * 0.45);
+          h = Math.min(h, (bandW * 0.92 * bend / cross) / aspect);
+        }
+        const swimming = st === 'SWIM' && anim.swimU < 0.5;
         // 몸짓 위상 = 전진 위상. 헤엄이 끝나면 느린 부유로 넘어간다.
         const theta = swimming ? anim.swimP * SWIM_STROKES * Math.PI * 2 : now / 520;
         const pose = swimming ? swimPose(theta) : { push: 0 };
@@ -907,7 +994,19 @@
           fxCtx.save(); fxCtx.globalAlpha = e;
           drawDalsuSwim(fxCtx, d, x * W, y * H + h * (1 - e) * 0.45, h * (0.7 + e * 0.3), angleAt(u), theta, false);
           fxCtx.restore();
-        } else { const tD = performance.now(); drawDalsuSwim(fxCtx, d, x * W, y * H, h, angleAt(u), theta, swimming); tick('달수', tD); }
+        } else {
+          const tD = performance.now();
+          const head = angleAt(u);
+          // 굽이 안쪽으로 기울인다 — 곡률(진행 방향이 얼마나 빠르게 돌아가는지)에 비례
+          let bank = 0;
+          if (swimming) {
+            bank = Math.max(-0.30, Math.min(0.30, curve * 0.55));
+            pushWake(x * W, y * H + h * 0.16, head, now);   // 항적은 몸 뒤쪽 수면에 남는다
+          }
+          drawWakeTrail(fxCtx, now, H);                      // 달수 아래에 깔린다
+          drawDalsuSwim(fxCtx, d, x * W, y * H, h, head, theta, swimming, bank);
+          tick('달수', tD);
+        }
         // 물보라 — 물을 차는 순간에만 세게 튄다
         if (swimming && now - anim.lastWake > 55) {
           anim.lastWake = now;

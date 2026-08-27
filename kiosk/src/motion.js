@@ -15,6 +15,19 @@ function swimEase(p, strokes) {
 // θ 는 swimEase 의 위상과 같은 값을 넣어야 몸짓과 실제 전진이 맞물린다(따로 돌면 '허우적'거려 보인다).
 //   · 물을 차는 구간(θ 0~π): 몸이 앞으로 뻗고 살짝 가라앉았다가 솟구친다
 //   · 미끄러지는 구간(θ π~2π): 몸이 펴지고 천천히 떠오른다
+// 몸 굽이침 — 머리에서 꼬리로 파도가 지나간다.
+// 이게 없으면 아무리 자세를 잘 잡아도 '스프라이트가 경로를 따라 미끄러지는' 그림이 된다.
+// s: 몸 위 위치 (0 = 머리, 1 = 꼬리). 반환: -1~1 (렌더러가 몸 높이에 곱해 쓴다)
+//  · 진폭은 꼬리로 갈수록 커진다 — 수달은 머리를 고정하고 몸통·꼬리를 흔들어 나아간다.
+//    반대로 하면 머리를 흔드는 꼴이라 물에서 허우적거리는 것처럼 보인다.
+//  · 위상이 s 에 비례해 밀리므로 파도가 머리 → 꼬리로 '지나간다'.
+function swimUndulate(theta, s, waves) {
+  const w = waves == null ? 1.15 : waves;          // 몸에 실리는 파장 수
+  const t = Math.min(1, Math.max(0, s));
+  const amp = Math.pow(t, 1.5);
+  return Math.sin(theta - t * w * Math.PI * 2) * amp;
+}
+
 function swimPose(theta) {
   const t = theta;
   // swimEase 의 전진 속도는 1-0.6cos(θ) 이라 θ=π 에서 가장 빠르다.
@@ -143,6 +156,6 @@ function createSound(enabled) {
   };
 }
 
-{ const __exports = { easeOutBack, easeInOut, swimEase, swimPose, createParticles, createSound };
+{ const __exports = { easeOutBack, easeInOut, swimEase, swimPose, swimUndulate, createParticles, createSound };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }
