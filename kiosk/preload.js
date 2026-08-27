@@ -11,4 +11,10 @@ contextBridge.exposeInMainWorld('kiosk', {
   snap: (name) => ipcRenderer.invoke('snap', name),
   quit: () => ipcRenderer.invoke('app:quit'),
   smokeExit: (ok, info) => ipcRenderer.invoke('smoke:exit', ok, info),
+  // 인쇄 진행 단계 수신 (SMART-81 은 20~40초가 걸려 실제 단계를 보여줘야 한다)
+  onPrintStage: (cb) => {
+    const h = (_e, key) => cb(key);
+    ipcRenderer.on('print:stage', h);
+    return () => ipcRenderer.removeListener('print:stage', h);
+  },
 });

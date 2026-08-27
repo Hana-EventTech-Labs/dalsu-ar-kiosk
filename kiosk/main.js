@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { feedStages } = require('./src/stagelog');   // 인쇄 진행 단계 파서 (순수 · 테스트됨)
 
 const ROOT = __dirname;                                   // 앱 리소스 kiosk/ (패키징 시 resources/app/kiosk)
 // 데이터 루트 — 배포 exe 옆(설정·출력·로그를 현장에서 바로 열 수 있게). 개발 시에는 저장소 루트.
@@ -20,6 +21,26 @@ const IS_SMOKE = ARGS.has('--smoke');
 // 배포 exe는 더블클릭만으로 전체화면 키오스크. 창 모드가 필요하면 --windowed (개발 npm start는 창 모드 유지)
 const IS_KIOSK = ARGS.has('--kiosk') || (app.isPackaged && !IS_SMOKE && !ARGS.has('--windowed'));
 const SMOKE_SPEED = (process.argv.find((a) => a.startsWith('--smoke-speed=')) || '').split('=')[1] || '';
+// 스모크 창 크기 — 가로 모니터처럼 다른 비율에서 레이아웃이 깨지는지 확인용 (예: --smoke-size=960x540)
+const SMOKE_SIZE = (() => {
+  const m = /^(\d{3,5})x(\d{3,5})$/.exec((process.argv.find((a) => a.startsWith('--smoke-size=')) || '').split('=')[1] || '');
+  return m ? { w: +m[1], h: +m[2] } : { w: 540, h: 960 };
+})();
+// 뷰포트를 실제 키오스크 해상도로 강제 (예: --smoke-emulate=1080x1920)
+const SMOKE_EMULATE = (() => {
+  const m = /^(\d{3,5})x(\d{3,5})$/.exec((process.argv.find((a) => a.startsWith('--smoke-emulate=')) || '').split('=')[1] || '');
+  return m ? { w: +m[1], h: +m[2] } : null;
+})();
+
+// 어떤 빌드를 보고 있는지 화면·로그에서 바로 알 수 있게 (현장에서 구버전 실행 사고 방지)
+const BUILD = (() => {
+  let builtAt = '';
+  try { builtAt = fs.statSync(path.join(ROOT, 'main.js')).mtime.toISOString().slice(0, 16).replace('T', ' '); } catch (e) { /* noop */ }
+  let version = app.getVersion();
+  // 개발 모드에서는 app.getVersion() 이 Electron 버전을 돌려주므로 package.json 을 직접 읽는다
+  if (!app.isPackaged) { try { version = JSON.parse(fs.readFileSync(path.join(ROOT, '..', 'package.json'), 'utf8')).version; } catch (e) { /* noop */ } }
+  return { version, builtAt };
+})();
 
 let config = loadConfig();
 const LOG_DIR = path.join(DATA_ROOT, 'logs');
@@ -41,7 +62,12 @@ function loadConfig() {
   // 필수 검증 — 잘못된 설정으로 현장에서 조용히 죽는 것 방지
   if (!Array.isArray(c.goals) || c.goals.length !== 4) throw new Error('config.goals는 4개여야 합니다');
   if (!['smart', 'dry-run'].includes(c.printer.mode)) throw new Error('config.printer.mode는 smart|dry-run');
-  if (c.card.width !== 1012 || c.card.height !== 636) throw new Error('card 크기는 1012×636 고정');
+  // CR-80 카드(Smart-31/51/81 공통). SDK 카드 좌표는 664×1040(세로) / 1040×664(가로).
+  // 라테일 팝업스토어에서 이 값으로 SMART-81 양면 풀블리드 인쇄가 실측 확인됐다.
+  const land = c.card.width === 1040 && c.card.height === 664;
+  const port = c.card.width === 664 && c.card.height === 1040;
+  if (!land && !port) throw new Error('card 크기는 1040×664(가로) 또는 664×1040(세로)');
+  if ((c.card.orientation === 'portrait') !== port) throw new Error('card.orientation 과 width/height 가 어긋납니다');
   return c;
 }
 
@@ -72,7 +98,7 @@ function dataUrlToFile(dataUrl, file) {
 }
 
 // 인쇄: 앞면 PNG 저장 → 모드에 따라 DalsuPrint.exe 실행
-async function printCard(frontDataUrl, opts) {
+async function printCard(frontDataUrl, opts, onStage) {
   const dir = outDir(opts && opts.subdir);
   const base = `card-${stamp()}`;
   const front = dataUrlToFile(frontDataUrl, path.join(dir, `${base}-front.png`));
@@ -85,33 +111,49 @@ async function printCard(frontDataUrl, opts) {
 
   if (config.printer.mode === 'dry-run') {
     log('INFO', 'dry-run 모드 — 실제 인쇄 생략');
+    if (onStage) onStage('done');
     return { ok: true, mode: 'dry-run', front, back };
   }
 
   const exe = resolvePrinterExe();
   if (!exe) throw new Error(`인쇄 CLI(DalsuPrint.exe)를 찾을 수 없습니다 — 설치 폴더를 확인하세요`);
-  const args = ['--front', front, '--back', back];
+  const args = ['--front', front, '--back', back,
+    config.card.orientation === 'portrait' ? '--portrait' : '--landscape',
+    '--mode', config.printer.sdk === 'dcl' ? 'dcl' : 'comm'];
   if (config.printer.deviceDesc) args.push('--printer', config.printer.deviceDesc);
 
   let lastErr = null;
   for (let attempt = 0; attempt <= (config.printer.retry || 0); attempt++) {
-    const r = await runPrinter(exe, args);
-    if (r.code === 0) { log('INFO', '인쇄 완료', { attempt, out: r.stdout.trim().slice(-300) }); return { ok: true, mode: 'smart', front, back }; }
+    if (onStage) onStage(attempt > 0 ? 'retry' : 'start');
+    const r = await runPrinter(exe, args, onStage);
+    if (r.code === 0) { if (onStage) onStage('done'); log('INFO', '인쇄 완료', { attempt, out: r.stdout.trim().slice(-300) }); return { ok: true, mode: 'smart', front, back }; }
     lastErr = `exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(-300)}`;
     log('ERROR', '인쇄 실패', { attempt, lastErr });
+    // 타임아웃은 재시도하지 않는다. SMART-81D 는 물리 인쇄 내내 블로킹하므로(실측 60~90초),
+    // 타임아웃 시점에도 카드가 프린터 안에 있을 수 있다. 그 상태로 다시 넣으면 잼이 난다.
+    if (/\[timeout\]/.test(r.stderr || '')) { log('WARN', '타임아웃 — 재시도하지 않음 (카드가 프린터 안에 있을 수 있음)'); break; }
   }
   return { ok: false, mode: 'smart', error: lastErr, front, back };
 }
 
-function runPrinter(exe, args) {
+// onStage: CLI 가 stdout 으로 흘리는 '##STAGE:<키>' 를 실시간으로 넘긴다.
+// SMART-81 은 인쇄에 20~40초가 걸리므로, 화면이 실제 진행을 보여주려면 이 신호가 있어야 한다.
+// (타이머로 채우는 진행바는 100% 에서 멈춘 채 한참을 더 기다리게 만든다)
+function runPrinter(exe, args, onStage) {
   return new Promise((resolve) => {
     const p = spawn(exe, args, { windowsHide: true });
-    let stdout = '', stderr = '';
+    let stdout = '', stderr = '', pending = '';
     const timer = setTimeout(() => { p.kill(); stderr += '\n[timeout]'; }, config.printer.timeoutMs || 90000);
-    p.stdout.on('data', d => { stdout += d; });
-    p.stderr.on('data', d => { stderr += d; });
-    p.on('error', e => { clearTimeout(timer); resolve({ code: -1, stdout, stderr: String(e) }); });
-    p.on('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+    p.stdout.on('data', (d) => {
+      stdout += d;
+      if (!onStage) return;
+      const r = feedStages(pending, d);
+      pending = r.pending;
+      for (const key of r.stages) { try { onStage(key); } catch (e) { /* 창이 이미 닫혔을 수 있다 */ } }
+    });
+    p.stderr.on('data', (d) => { stderr += d; });
+    p.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, stdout, stderr: String(e) }); });
+    p.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
   });
 }
 
@@ -119,7 +161,7 @@ function createWindow() {
   // 키오스크 실물은 1080×1920 세로. 스모크는 화면에 들어가도록 같은 비율의 절반(540×960)으로 띄워
   // 캡처가 실제 키오스크 비율(vw/vh)을 그대로 반영하게 한다.
   const win = new BrowserWindow({
-    width: IS_SMOKE ? 540 : 1080, height: IS_SMOKE ? 960 : 1920,
+    width: IS_SMOKE ? SMOKE_SIZE.w : 1080, height: IS_SMOKE ? SMOKE_SIZE.h : 1920,
     useContentSize: true,
     fullscreen: IS_KIOSK, kiosk: IS_KIOSK, frame: !IS_KIOSK, autoHideMenuBar: true,
     backgroundColor: '#0b2a3a',
@@ -132,9 +174,26 @@ function createWindow() {
   });
   win.loadFile(path.join(ROOT, 'src', 'index.html'), {
     query: IS_SMOKE
-      ? { smoke: '1', ...(SMOKE_SPEED ? { speed: SMOKE_SPEED } : {}), ...(ARGS.has('--smoke-exit') ? { exitcheck: '1' } : {}) }
+      ? { smoke: '1', ...(SMOKE_SPEED ? { speed: SMOKE_SPEED } : {}), ...(ARGS.has('--smoke-exit') ? { exitcheck: '1' } : {}), ...(ARGS.has('--smoke-e2e') ? { e2e: '1' } : {}), ...(ARGS.has('--smoke-bench') ? { bench: '1' } : {}) }
       : {},
   });
+  // 실제 키오스크 해상도(1080×1920)의 CSS 레이아웃을 그대로 검증한다.
+  // 개발 모니터가 1920px 세로를 못 띄우므로, 뷰포트만 1080×1920으로 강제하고 화면에는 축소해 그린다.
+  if (IS_SMOKE && SMOKE_EMULATE) {
+    win.webContents.once('dom-ready', () => {
+      try {
+        win.webContents.enableDeviceEmulation({
+          screenPosition: 'mobile',
+          screenSize: { width: SMOKE_EMULATE.w, height: SMOKE_EMULATE.h },
+          viewSize: { width: SMOKE_EMULATE.w, height: SMOKE_EMULATE.h },
+          viewPosition: { x: 0, y: 0 },
+          deviceScaleFactor: 0,
+          scale: Math.min(SMOKE_SIZE.w / SMOKE_EMULATE.w, SMOKE_SIZE.h / SMOKE_EMULATE.h),
+        });
+        log('INFO', '기기 에뮬레이션', SMOKE_EMULATE);
+      } catch (e) { log('WARN', '기기 에뮬레이션 실패', { error: String(e) }); }
+    });
+  }
   if (!IS_KIOSK && !IS_SMOKE && ARGS.has('--devtools')) win.webContents.openDevTools({ mode: 'detach' });
   // F11: 전체화면 토글 — 배포 exe를 더블클릭(인자 없이)해도 현장에서 키오스크 화면을 확인할 수 있게
   win.webContents.on('before-input-event', (e, input) => {
@@ -159,18 +218,26 @@ async function runPreflight() {
 app.whenReady().then(async () => {
   // 웹캠 권한 자동 허용 (키오스크는 프롬프트 불가)
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
-  log('INFO', `앱 시작 mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
+  log('INFO', `앱 시작 v${BUILD.version} (${BUILD.builtAt}) mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
+  // 하드웨어 가속 여부 — CPU 렌더링(SwiftShader)이면 물 연출이 끊긴다. 현장 진단의 첫 단서.
+  try {
+    const g = app.getGPUFeatureStatus() || {};
+    const canvas = g.gpu_compositing || g['2d_canvas'] || '?';
+    const software = /software|disabled|unavailable/i.test(String(canvas));
+    log(software ? 'WARN' : 'INFO', `그래픽 가속: ${software ? '소프트웨어(CPU) — 연출 품질 자동 하향' : '하드웨어'}`,
+      { '2d_canvas': g['2d_canvas'], gpu_compositing: g.gpu_compositing, rasterization: g.rasterization });
+  } catch (e) { log('WARN', 'GPU 상태 조회 실패', { error: String(e) }); }
   await runPreflight();
   createWindow();
 });
 
-ipcMain.handle('config:get', () => config);
+ipcMain.handle('config:get', () => ({ ...config, build: BUILD }));
 ipcMain.handle('preflight:get', () => preflight);
 ipcMain.handle('preflight:rerun', () => runPreflight());
 ipcMain.handle('config:reload', () => { config = loadConfig(); log('INFO', '설정 리로드'); return config; });
 ipcMain.handle('log', (_e, level, msg, extra) => log(level, msg, extra));
 ipcMain.handle('print', async (_e, frontDataUrl, opts) => {
-  try { return await printCard(frontDataUrl, opts); }
+  try { return await printCard(frontDataUrl, opts, (key) => { try { _e.sender.send('print:stage', key); } catch (x) { /* 창이 닫힘 */ } }); }
   catch (e) { log('ERROR', '인쇄 예외', { error: String(e) }); return { ok: false, error: String(e) }; }
 });
 // 스모크 종료: 결과 코드로 프로세스 종료 (npm run smoke 게이트)
