@@ -47,6 +47,23 @@ const LOG_DIR = path.join(DATA_ROOT, 'logs');
 fs.mkdirSync(LOG_DIR, { recursive: true });
 const logFile = path.join(LOG_DIR, `kiosk-${today()}.log`);
 
+// 인쇄 실제 소요 시간 기록. SMART-81D 는 60~90초가 걸리는데(라테일 실측) 정확한 값은 장비·리본·
+// 카드에 따라 다르다. 사람에게 재 달라고 하는 대신 앱이 스스로 재서 안내 문구를 맞춘다.
+const STATS_PATH = path.join(LOG_DIR, 'print-stats.json');
+function readPrintStats() {
+  try { const s = JSON.parse(fs.readFileSync(STATS_PATH, 'utf8')); return (s && s.count > 0) ? s : { count: 0 }; }
+  catch (e) { return { count: 0 }; }
+}
+function recordPrintMs(ms) {
+  if (!(ms > 1000)) return;                      // dry-run 처럼 즉시 끝난 건 통계에 넣지 않는다
+  const s = readPrintStats();
+  // 최근 값에 무게를 둔 이동평균 — 리본 교체나 장비 상태 변화를 며칠씩 끌고 가지 않는다
+  const avg = s.count ? Math.round(s.avgMs * 0.7 + ms * 0.3) : ms;
+  const next = { lastMs: ms, avgMs: avg, count: s.count + 1, updatedAt: new Date().toISOString() };
+  try { fs.writeFileSync(STATS_PATH, JSON.stringify(next, null, 2)); } catch (e) { /* 쓰기 실패는 무시 */ }
+  log('INFO', '인쇄 소요', { ms, avgMs: avg, 누적: next.count });
+}
+
 function today() { return new Date().toISOString().slice(0, 10); }
 function stamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
 
@@ -125,8 +142,9 @@ async function printCard(frontDataUrl, opts, onStage) {
   let lastErr = null;
   for (let attempt = 0; attempt <= (config.printer.retry || 0); attempt++) {
     if (onStage) onStage(attempt > 0 ? 'retry' : 'start');
+    const tStart = Date.now();
     const r = await runPrinter(exe, args, onStage);
-    if (r.code === 0) { if (onStage) onStage('done'); log('INFO', '인쇄 완료', { attempt, out: r.stdout.trim().slice(-300) }); return { ok: true, mode: 'smart', front, back }; }
+    if (r.code === 0) { if (onStage) onStage('done'); recordPrintMs(Date.now() - tStart); log('INFO', '인쇄 완료', { attempt, out: r.stdout.trim().slice(-300) }); return { ok: true, mode: 'smart', front, back }; }
     lastErr = `exit ${r.code}: ${(r.stderr || r.stdout).trim().slice(-300)}`;
     log('ERROR', '인쇄 실패', { attempt, lastErr });
     // 타임아웃은 재시도하지 않는다. SMART-81D 는 물리 인쇄 내내 블로킹하므로(실측 60~90초),
@@ -233,6 +251,7 @@ app.whenReady().then(async () => {
 
 ipcMain.handle('config:get', () => ({ ...config, build: BUILD }));
 ipcMain.handle('preflight:get', () => preflight);
+ipcMain.handle('print:stats', () => readPrintStats());
 ipcMain.handle('preflight:rerun', () => runPreflight());
 ipcMain.handle('config:reload', () => { config = loadConfig(); log('INFO', '설정 리로드'); return config; });
 ipcMain.handle('log', (_e, level, msg, extra) => log(level, msg, extra));

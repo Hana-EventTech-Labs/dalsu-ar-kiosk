@@ -382,7 +382,7 @@
         start: '출력 준비 중이에요', connect: '프린터를 연결하고 있어요',
         settings: '양면 인쇄를 설정하고 있어요', cardin: '카드를 넣고 있어요',
         load: '사진을 프린터로 보내고 있어요', ribbon: '리본을 확인하고 있어요',
-        print: '카드를 인쇄하고 있어요 (약 1분)', eject: '카드가 나오고 있어요',
+        print: '카드를 인쇄하고 있어요', eject: '카드가 나오고 있어요',
         retry: '다시 시도하고 있어요', done: '거의 다 됐어요',
       }, (cfg.screen && cfg.screen.printStages) || {});
       const STAGE_ORDER = ['start', 'connect', 'settings', 'cardin', 'load', 'ribbon', 'print', 'eject', 'done'];
@@ -402,6 +402,15 @@
         pr.dataset.busy = key === 'done' ? '0' : '1';
         log('INFO', '인쇄 단계', { stage: key, pct });
       };
+      // '약 N초' 는 추정으로 적으면 틀린 안내가 된다. 이 장비가 실제로 걸린 시간을 앱이 기억해 두었다가
+      // 그 값으로 말한다(첫 인쇄 때는 숫자 없이 안내만). 사람이 재서 알려줄 필요가 없다.
+      try {
+        const st = window.kiosk.printStats ? await window.kiosk.printStats() : null;
+        if (st && st.count > 0 && st.avgMs > 3000) {
+          const sec = Math.round(st.avgMs / 5000) * 5;    // 5초 단위로 뭉뚱그린다 — 정밀한 척하지 않는다
+          STAGE_TEXT.print = `${STAGE_TEXT.print} (약 ${sec}초)`;
+        }
+      } catch (e) { /* 통계가 없어도 진행에는 지장 없다 */ }
       bar.style.transitionDuration = '';        // 타이머 전환 제거 (CSS 기본값 사용)
       $('printer').style.setProperty('--out', 0);   // 다음 관람객을 위해 카드를 도로 넣어둔다
       setStage('start');

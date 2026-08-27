@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('kiosk', {
   log: (level, msg, extra) => ipcRenderer.invoke('log', level, msg, extra),
   print: (frontDataUrl, opts) => ipcRenderer.invoke('print', frontDataUrl, opts),
   getPreflight: () => ipcRenderer.invoke('preflight:get'),
+  printStats: () => ipcRenderer.invoke('print:stats'),   // 직전·평균 인쇄 소요(ms)
   rerunPreflight: () => ipcRenderer.invoke('preflight:rerun'),
   snap: (name) => ipcRenderer.invoke('snap', name),
   quit: () => ipcRenderer.invoke('app:quit'),
