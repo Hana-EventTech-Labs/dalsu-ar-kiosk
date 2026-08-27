@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -52,7 +52,18 @@ namespace SmartNfcWriter
         public const long S51PS_S_COVEROPENED   = 0x0000000000020000; // 헤더 326
         public const long S51PS_S_CARDEMPTY     = 0x0000000000100000; // 헤더 329
 
-        // Orientation
+        // 양면 강제 — 프린터 설정(SMART81_DEVMODE)의 dwPrtSide 를 직접 패치한다.
+        //   SMART81_DEVMODE = { DEVMODEW devmode; OEMDEV81 oemdev; }  (중간 reserved 없음)
+        //   sizeof(OEMDEV81)=12976, OEMDEV81 내 dwPrtSide 오프셋=164
+        //   → 버퍼 내 오프셋 = (len - 12976) + 164.  값: 0=앞면, 2=양면(SMART-51/81)
+        // 근거: 라테일 팝업스토어 03-character-card-kiosk/printer.js — 실장비 양면 출력 확인됨(2026-06).
+        public const int SIZEOF_OEMDEV81 = 12976;
+        public const int OEMDEV81_DWPRTSIDE = 164;
+        public const int PRTSIDE_FRONT = 0;
+        public const int PRTSIDE_BOTH = 2;
+
+        // Orientation (Windows DEVMODE 표준값)
+        public const int DMORIENT_PORTRAIT  = 1;
         public const int DMORIENT_LANDSCAPE = 2;
 
         #region Native Structures
@@ -176,6 +187,9 @@ namespace SmartNfcWriter
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate int D_DoPrint(IntPtr hsmart);
+        // SmartComm_GetPrinterSettings2(HSMART, void* pDm, int* plen) / SetPrinterSettings2(HSMART, void* pDm, int len)
+        private delegate int D_GetPrinterSettings2(IntPtr hsmart, IntPtr pDm, ref int plen);
+        private delegate int D_SetPrinterSettings2(IntPtr hsmart, IntPtr pDm, int len);
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi, CharSet = CharSet.Unicode)]
         private delegate int D_DrawText(IntPtr hsmart, byte page, byte panel,
@@ -242,6 +256,8 @@ namespace SmartNfcWriter
         private D_CardOut _cardOut;
         private D_Move _move;
         private D_DoPrint _doPrint;
+        private D_GetPrinterSettings2 _getPrinterSettings2;
+        private D_SetPrinterSettings2 _setPrinterSettings2;
         private D_DrawText _drawText;
         private D_DrawImage _drawImage;
         private D_DrawBitmap _drawBitmap;
@@ -295,6 +311,8 @@ namespace SmartNfcWriter
             _cardOut = GetFunc<D_CardOut>("SmartComm_CardOut");
             _move = GetFunc<D_Move>("SmartComm_Move");
             _doPrint = GetFunc<D_DoPrint>("SmartComm_DoPrint");
+            _getPrinterSettings2 = GetFunc<D_GetPrinterSettings2>("SmartComm_GetPrinterSettings2");
+            _setPrinterSettings2 = GetFunc<D_SetPrinterSettings2>("SmartComm_SetPrinterSettings2");
             _drawText = GetFunc<D_DrawText>("SmartComm_DrawText");
             _drawImage = GetFunc<D_DrawImage>("SmartComm_DrawImage");
             _drawBitmap = GetFunc<D_DrawBitmap>("SmartComm_DrawBitmap");
@@ -346,10 +364,11 @@ namespace SmartNfcWriter
             return _openDevice2(ref _hSmart, deviceDesc, type);
         }
 
-        public int OpenDeviceDCL(string deviceDesc, bool byDesc = true)
+        /// <summary>DCL 모드로 장치를 연다. orientation 은 DMORIENT_PORTRAIT(세로) / DMORIENT_LANDSCAPE(가로).</summary>
+        public int OpenDeviceDCL(string deviceDesc, bool byDesc = true, int orientation = DMORIENT_LANDSCAPE)
         {
             int type = byDesc ? SMART_OPENDEVICE_BYDESC : SMART_OPENDEVICE_BYID;
-            return _dclOpenDevice2(ref _hSmart, deviceDesc, type, DMORIENT_LANDSCAPE);
+            return _dclOpenDevice2(ref _hSmart, deviceDesc, type, orientation);
         }
 
         /// <summary>
@@ -419,6 +438,46 @@ namespace SmartNfcWriter
         }
 
         public int Print() => _print(_hSmart);
+
+        /// <summary>
+        /// 인쇄 면을 프린터 설정에 강제 적용한다(0=앞면, 2=양면). 성공 시 true.
+        /// 구조가 예상과 다르면(다른 모델 등) **건드리지 않고** false 를 돌려준다 — 잘못 쓰면 설정이 깨진다.
+        /// </summary>
+        public bool ApplyPrintSide(int side, out string detail)
+        {
+            detail = "";
+            int len = 0;
+            int r = _getPrinterSettings2(_hSmart, IntPtr.Zero, ref len);
+            if (r != SM_SUCCESS || len <= 0) { detail = $"설정 길이 조회 실패 (0x{r:X8}, len={len})"; return false; }
+
+            int devmodeSize = len - SIZEOF_OEMDEV81;
+            int off = devmodeSize + OEMDEV81_DWPRTSIDE;
+            if (devmodeSize < 150 || devmodeSize > 400 || off + 4 > len)
+            {
+                detail = $"레이아웃 불일치 — 미적용 (len={len}, devmode={devmodeSize})";
+                return false;
+            }
+
+            IntPtr buf = Marshal.AllocHGlobal(len);
+            try
+            {
+                int l2 = len;
+                if ((r = _getPrinterSettings2(_hSmart, buf, ref l2)) != SM_SUCCESS)
+                { detail = $"설정 읽기 실패 (0x{r:X8})"; return false; }
+
+                byte[] tmp = new byte[len];
+                Marshal.Copy(buf, tmp, 0, len);
+                uint cur = BitConverter.ToUInt32(tmp, off);
+                if (cur > 3) { detail = $"면 값이 비정상({cur}) — 오프셋 의심, 미적용"; return false; }
+
+                BitConverter.GetBytes((uint)side).CopyTo(tmp, off);
+                Marshal.Copy(tmp, 0, buf, len);
+                r = _setPrinterSettings2(_hSmart, buf, len);
+                detail = r == SM_SUCCESS ? $"dwPrtSide {cur}→{side} 적용" : $"설정 쓰기 실패 (0x{r:X8})";
+                return r == SM_SUCCESS;
+            }
+            finally { Marshal.FreeHGlobal(buf); }
+        }
 
         public int DCLPrint(int printSide) => _dclPrint(_hSmart, printSide);
 
