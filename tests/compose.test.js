@@ -39,12 +39,15 @@ test('LAYERS 순서: 사진이 맨 아래, 달수가 자연 위', () => {
   assert.ok(LAYERS.indexOf('dalsu') > LAYERS.indexOf('nature'));
 });
 
-test('river: 경로 양 끝과 중간이 정규화 범위 안, 단조 진행', () => {
+test('river: 시냇물 — 위 가운데 합류점에서 굽이쳐 내려와 왼쪽 아래로 빠져나간다', () => {
   const pts = river.samples(50);
-  for (const [x, y] of pts) assert.ok(x >= 0 && x <= 1 && y >= 0 && y <= 1);
-  assert.deepEqual(river.pointAt(0).map(v => +v.toFixed(3)), [0.1, 0.18]);
-  assert.deepEqual(river.pointAt(1).map(v => +v.toFixed(3)), [0.9, 0.82]);
-  assert.deepEqual(river.pointAt(0.5).map(v => +v.toFixed(3)), [0.5, 0.5]);
+  for (const [x, y] of pts) assert.ok(x >= 0 && x <= 1, `x가 화면 안이어야 (${x})`);
+  const s = river.pointAt(0), m = river.pointAt(0.5), e = river.pointAt(1);
+  assert.ok(Math.abs(s[0] - 0.5) < 0.03 && s[1] < 0.45, `합류점은 위 가운데 (${s})`);
+  assert.equal(+m[0].toFixed(3), 0.5, '중간점은 가로 중앙 — 달수 도착점');
+  assert.ok(m[1] > 0.5 && m[1] < 0.7, `달수 도착점 y(${m[1]})는 화면 중앙보다 살짝 아래(원근상 가깝게)`);
+  assert.ok(e[0] < 0.4, `하류는 왼쪽 아래 (${e})`);
+  assert.ok(e[1] > 1, '물길은 화면 아래로 빠져나가야 한다 (끊긴 오브젝트로 보이지 않게)');
   assert.ok(river.pointAt(1.5)[0] === river.pointAt(1)[0], '범위 밖은 클램프');
 });
 

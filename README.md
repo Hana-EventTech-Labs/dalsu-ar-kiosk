@@ -23,16 +23,24 @@ npm start           # 창 모드 (--devtools 추가 시 개발자 도구)
 
 ## 그래픽 교체
 `kiosk/assets/` 파일을 같은 이름으로 덮어쓰면 코드 수정 없이 반영됩니다.
-- `dalsu-front.png` 대기 화면 / `dalsu-side.png` 터치 가이드 / `dalsu-float.png` 물길 위 달수(부유 포즈)
+- `dalsu-front.png` 대기·가이드 화면(옷 입은 정면 서기) / `dalsu-side.png` 측면 / `dalsu-float.png` 물길 헤엄(옷 입은 엎드림)
+- 달수는 **옷 입은(탐험가 복장) 버전**이 기본입니다. `npm run assets`가 `assets-src/dalsu-explorer-turnaround.ai.pdf`와 `dalsu-lying-2.ai.pdf`에서 뽑습니다
 - `dalsu-face.png` 뒷면 카드 / `card-back.png` 뒷면 카드 완성본(1012×636)
-- `nature-1.png … nature-8.png` 자연 회복 요소 (없으면 이모지로 대체)
+- `fish-1..4.png`(물 위) / `plant-*.png`(물가) / `tree-*.png`(숲) — 실사 컷아웃. 없으면 벡터 스프라이트로 자동 대체
+  외부 이미지는 `python scripts/cutout-web-assets.py` 로 흰 배경을 제거해 만들고, 출처는 `docs/ASSET_CREDITS.md` 에 기록
 - 물방울·물길은 코드에서 그린다. 강물은 `kiosk/src/water.js`가 수면 텍스처를 흐름 방향으로 스크롤해 실제로 흐르게 렌더
 - `kiosk/assets/water.png` 를 넣으면 수면 텍스처가 그 이미지로 바뀐다 — **가로 = 흐름 방향이고 좌우가 이어지는(타일러블) 이미지**여야 함(권장 384×160 이상). 없으면 절차 생성본 사용
 - 강 굵기·속도·색은 `config.json > river` (`style: "cartoon"` 으로 기존 벡터 물길 복귀 가능)
+- 물길은 **굽이치는 시냇물**(전체 실루엣이 S를 이룸)이며 `config.json > river.path` 로 경로를 코드 수정 없이 바꿀 수 있습니다(베지어 2구간, 각 `p0/p1/p2/p3`)
+- 지류(4줄기) 굵기는 `river.tributaryWidthRatio`
+- 양옆 숲·언덕은 `config.json > scene` (`treeCount`·`treeSize`·`minDist`·`hillY`), 카드 나무는 `card.trees`
 
 ## 출력물
-- 앞면: 웹캠 프레임(cover 크롭) + 물길 + 자연 요소 + 달수 + 하단 행사명/날짜 → 1012×636 PNG
-- 뒷면: `card-back.png` 고정
+- 앞면: 웹캠 프레임(cover 크롭) + **복구된 자연 + 달수**(강물은 넣지 않음) → 1012×636 PNG
+  자연 개수·크기는 `config.json > card.natureCount / natureSize`, 하단 전경 풀은 `card.foreground`
+- 뒷면: `card-back.png` 고정 (config 방향에 맞춰 `npm run assets` 가 생성)
+- 카드 방향: `config.json > card.orientation` — `portrait`(664×1040, 기본) / `landscape`(1040×664). Smart-31/51/81 공통 CR-80 카드
+- 인쇄 SDK 경로: `config.json > printer.sdk` — `comm`(기본, 드라이버 모드 + 양면 강제) / `dcl`(직접통신 폴백)
 - 저장: `out/YYYY-MM-DD/card-<timestamp>-front|back.png`, 로그: `logs/kiosk-YYYY-MM-DD.log`
 
 ## 인쇄 경로

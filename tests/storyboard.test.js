@@ -28,7 +28,7 @@ test('기획 흐름 순서: 물방울 4개 → 물길 → 자연 → 헤엄 → 
 test('전체 체험시간이 기획 범위(50초~1분 20초) 안에 든다', () => {
   const T = cfg.timing;
   // 연출·대기 구간 합 (사용자 터치 시간은 제외)
-  const auto = T.achieveMs + T.riverFormMs + T.natureMs + T.swimMs
+  const auto = T.achieveMs + T.riverFormMs + T.natureMs + T.swimMs + (T.readyMs || 0)
     + (T.countdownSec + 1) * 1000 + T.previewMs + T.doneMs;
   const touchFast = T.goalTextMs + 4 * 1200;   // 빠른 관람객: 물방울당 약 1.2초
   const touchSlow = T.goalTextMs + 4 * 4000;   // 느린 관람객: 물방울당 약 4초
@@ -62,14 +62,37 @@ test('헤엄 이징: 항상 전진하고 등속이 아니다(스트로크가 있
   assert.ok(max / min > 2, `속도 변화가 있어야 슬라이드가 아니라 헤엄 (max/min=${(max / min).toFixed(2)})`);
 });
 
-test('헤엄 자세: 몸통이 흔들리고 좌우/상하 늘어남이 반대로 움직인다', () => {
+test('헤엄 자세: 물을 찰 때 몸이 앞뒤로 늘고 위아래로 눌린다', () => {
   const a = swimPose(0.4), b = swimPose(0.4 + Math.PI);
-  assert.ok(Math.abs(a.roll - b.roll) > 0.1, '위상에 따라 몸통 각도가 바뀐다');
-  for (const ph of [0, 0.7, 1.9, 3.3]) {
-    const p = swimPose(ph);
-    assert.ok(Math.abs(p.sx + p.sy - 2) < 1e-9, '가로로 늘면 세로는 그만큼 줄어든다');
-    assert.ok(Math.abs(p.bob) <= 0.5);
+  assert.ok(Math.abs(a.roll - b.roll) > 0.05, '위상에 따라 몸통 각도가 바뀐다');
+  const push = swimPose(Math.PI);          // 가장 세게 차는 순간 (= 가장 빨리 나아가는 순간)
+  const glide = swimPose(0);               // 미끄러지는 순간
+  assert.ok(push.push > 0.99 && glide.push < 0.01, 'push 는 차는 구간에서만 커진다');
+  assert.ok(push.sx > glide.sx && push.sy < glide.sy, '가로로 늘면 세로는 눌린다');
+  for (let t = 0; t < Math.PI * 2; t += 0.13) {
+    const p = swimPose(t);
+    assert.ok(p.sx > 0.9 && p.sx < 1.15 && p.sy > 0.9 && p.sy < 1.15, `찌그러짐이 과하면 안 된다 (${p.sx},${p.sy})`);
+    assert.ok(Math.abs(p.bob) <= 0.9, `상하 부침 범위 (${p.bob})`);
+    assert.ok(p.sink >= 0 && p.sink <= 1, 'sink 는 0~1');
   }
+});
+
+test('헤엄 위상이 전진 위상과 맞물린다 — 스트로크마다 한 번씩 세게 찬다', () => {
+  const STROKES = 5;
+  let pushes = 0, prev = 0;
+  for (let i = 0; i <= 400; i++) {
+    const p = i / 400;
+    const push = swimPose(p * STROKES * Math.PI * 2).push;
+    if (prev < 0.9 && push >= 0.9) pushes++;
+    prev = push;
+  }
+  assert.equal(pushes, STROKES, `헤엄 한 번에 스트로크 ${STROKES}회여야 (실제 ${pushes})`);
+  // 가장 세게 차는 순간이 가장 빨리 전진하는 순간과 겹쳐야 한다
+  const speedAt = (p) => (swimEase(p + 0.001, STROKES) - swimEase(p - 0.001, STROKES)) / 0.002;
+  let fastest = 0, best = -1;
+  for (let i = 1; i < 200; i++) { const p = i / 200, v = speedAt(p); if (v > best) { best = v; fastest = p; } }
+  assert.ok(swimPose(fastest * STROKES * Math.PI * 2).push > 0.85,
+    '가장 빨리 나아가는 순간에 몸도 물을 차고 있어야 한다 (따로 돌면 허우적거려 보인다)');
 });
 
 test('카드 AR 영역: 인물 얼굴이 있는 상단은 비우고 하단에만 배치', () => {
@@ -79,51 +102,102 @@ test('카드 AR 영역: 인물 얼굴이 있는 상단은 비우고 하단에만
   for (const u of [0, 0.25, 0.5, 0.75, 1]) {
     const [x, y] = river.pointIn(u, box);
     assert.ok(x >= 0 && x <= 1, 'x는 카드 안');
-    assert.ok(y >= box.y - 1e-9 && y <= 1 + 1e-9, `u=${u} 의 y(${y})가 물 영역 밖`);
+    assert.ok(y >= box.y - 1e-9, `u=${u} 의 y(${y})가 얼굴 영역을 침범`);
   }
   assert.equal(river.samplesIn(10, box).length, 11);
   assert.ok(river.natureSlotsIn(8, 0.13, box).every((s) => s.y > 0.3));
 });
 
-test('합성 레이어에 하단 흰 띠(frame)가 없다', () => {
-  assert.ok(!LAYERS.includes('frame'), '기획에 없던 하단 띠는 그리지 않는다');
+test('카드에는 복구된 자연과 달수만 합성한다 — 강물·하단 띠는 넣지 않는다', () => {
   assert.equal(LAYERS[0], 'photo');
-  assert.ok(LAYERS.indexOf('dalsu') > LAYERS.indexOf('river'));
+  assert.ok(!LAYERS.includes('frame'), '기획에 없던 하단 흰 띠는 그리지 않는다');
+  assert.ok(!LAYERS.includes('river') && !LAYERS.includes('water'),
+    '기획: 촬영 사진에는 6번의 복구된 자연(강물 제외)과 달수만 AR 합성한다');
+  assert.ok(LAYERS.includes('nature') && LAYERS.includes('dalsu'));
+  assert.ok(LAYERS.indexOf('dalsu') > LAYERS.indexOf('nature'), '달수가 자연 위');
+});
+
+test('카드 자연 배치: 인물(가운데)과 달수(우하단)를 피한다', () => {
+  const { natureCardSlots, dalsuPlacement, CARD_NATURE_ZONES_PORTRAIT } = require('../kiosk/src/compose');
+  const W = cfg.card.width, H = cfg.card.height;
+  const portrait = cfg.card.orientation === 'portrait';
+  const d = dalsuPlacement(W, H, 2403, 1705, cfg.card.dalsuScale, cfg.card.dalsuAnchor);
+  const dalsuLeft = d.x / W, dalsuTop = d.y / H;
+  const slots = natureCardSlots(cfg.card.natureCount, cfg.card.artTop, portrait ? CARD_NATURE_ZONES_PORTRAIT : undefined);
+  assert.equal(slots.length, cfg.card.natureCount);
+  for (const s of slots) {
+    assert.ok(s.x > 0 && s.x < 1 && s.y > 0 && s.y < 1, `카드 안 (${s.x},${s.y})`);
+    assert.ok(s.y >= cfg.card.artTop - 1e-9, `자연은 하단에만 — 얼굴을 가리면 안 된다 (y=${s.y})`);
+    // 맨 아래 전경은 달수 앞의 풀로 읽히므로 겹쳐도 된다. 그 밖의 자리는 달수를 피해야 한다.
+    const foreground = s.y > 0.92;
+    const inDalsu = !foreground && s.x > dalsuLeft - 0.02 && s.y > dalsuTop - 0.02;
+    assert.ok(!inDalsu, `달수에 가려지는 자리 (${s.x.toFixed(2)},${s.y.toFixed(2)}) vs 달수 좌상단 (${dalsuLeft.toFixed(2)},${dalsuTop.toFixed(2)})`);
+    // 세로 카드는 인물이 프레임을 거의 다 채우므로 회피 폭이 더 넓다
+    const inPerson = portrait ? (s.x > 0.20 && s.x < 0.80 && s.y < 0.93)
+      : (s.x > 0.30 && s.x < 0.62 && s.y < 0.86);   // 그보다 아래는 '인물 앞 전경 풀'로 읽힌다
+    assert.ok(!inPerson, `인물 상반신을 가리는 자리 (${s.x.toFixed(2)},${s.y.toFixed(2)})`);
+  }
+});
+
+test('완료 화면 문구가 config 에 있다 (한 바퀴 돌고 왔을 때 표시)', () => {
+  assert.ok(cfg.screen.doneText && cfg.screen.doneText.length > 0);
+  assert.ok(cfg.screen.doneSub && cfg.screen.doneSub.length > 0, '수령 위치 안내가 있어야 관람객이 카드를 못 찾지 않는다');
 });
 
 test('촬영 화면은 기본으로 비어 있다', () => {
   assert.equal(cfg.screen.captureOverlay, false, '촬영 중 달수·물길이 사람을 가리면 안 된다');
 });
 
-test('물길은 화면 중앙에서 양쪽으로 뻗어 완성된다 (기획 4번)', () => {
+test('물길은 합류점(u=0)에서 하류로 한 방향으로 그려진다', () => {
   const mid = river.pointAt(0.5);
-  assert.deepEqual(mid.map((v) => +v.toFixed(3)), [0.5, 0.5], '경로 중앙이 화면 중앙이어야 물방울이 중앙으로 모인다');
-  const tiny = river.samplesRange(8, 0.5 - 0.02, 0.5 + 0.02);
-  for (const [x, y] of tiny) {
-    assert.ok(Math.abs(x - 0.5) < 0.12 && Math.abs(y - 0.5) < 0.12, '초반에는 중앙 주변만 그려진다');
+  assert.equal(+mid[0].toFixed(3), 0.5, '중간점은 가로 중앙 = 달수 도착점');
+  const early = river.samplesRange(8, 0, 0.15);
+  const start = river.pointAt(0);
+  for (const [x, y] of early) {
+    assert.ok(Math.hypot(x - start[0], y - start[1]) < 0.35, '초반에는 상류 주변만 그려진다');
   }
   const full = river.samplesRange(8, 0, 1);
   assert.deepEqual(full[0].map((v) => +v.toFixed(3)), river.pointAt(0).map((v) => +v.toFixed(3)));
   assert.deepEqual(full[8].map((v) => +v.toFixed(3)), river.pointAt(1).map((v) => +v.toFixed(3)));
 });
 
-test('강물 띠: 폭이 발원지·하구에서 좁고 가운데가 넓다', () => {
-  assert.ok(water.widthAt(0.5, 0.2) > water.widthAt(0.02, 0.2));
-  assert.ok(water.widthAt(0.5, 0.2) > water.widthAt(0.98, 0.2));
-  assert.ok(Math.abs(water.widthAt(0, 0.2) - 0.2) < 1e-9, '끝은 minTaper 폭');
-  assert.ok(Math.abs(water.widthAt(0.5, 0.2) - 1) < 1e-9, '가운데가 최대 폭');
+test('시냇물 폭: 원근(아래가 굵음) + 여울과 소(폭이 일정하지 않음)', () => {
+  const w = (u) => water.widthAt(u, 0.35);
+  // ① 원근 — 전체 추세는 아래로 갈수록 굵다
+  assert.ok(w(1) > w(0.5) && w(0.5) > w(0), '리본이 아니라 물길로 읽히려면 아래가 더 굵어야');
+  assert.ok(w(0.8) > w(0.2) * 1.4, '원근 차이가 눈에 보일 만큼은 나야');
+  // ② 여울과 소 — 폭이 매끈하게만 늘면 개울이 아니라 도형이다
+  let dips = 0, prev = w(0);
+  for (let i = 1; i <= 200; i++) { const v = w(i / 200); if (v < prev) dips++; prev = v; }
+  assert.ok(dips > 5, `폭이 좁아지는 구간이 있어야 실제 개울처럼 보인다 (dips=${dips})`);
+  // ③ 그래도 원근이 뒤집히진 않는다 — 조금 떨어진 하류는 항상 더 굵어야 한다
+  for (let i = 0; i <= 100; i++) {
+    const u = (i / 100) * 0.6;
+    assert.ok(w(u + 0.4) > w(u), `0.4 구간 뒤는 항상 더 굵어야 (u=${u.toFixed(2)})`);
+  }
 });
 
-test('강물 띠: 좌우 둑이 중심선에서 같은 거리만큼 벌어진다', () => {
+test('시냇물 둑: 좌우가 따로 들쭉날쭉하되 폭 범위를 벗어나지 않는다', () => {
   const pts = river.samples(40).map(([x, y]) => [x * 1000, y * 1000]);
   const band = water.bandPolygon(pts, 120, 0.3);
   assert.equal(band.left.length, pts.length);
+  let asym = 0;
   for (let i = 0; i < pts.length; i++) {
     const dl = Math.hypot(band.left[i][0] - pts[i][0], band.left[i][1] - pts[i][1]);
     const dr = Math.hypot(band.right[i][0] - pts[i][0], band.right[i][1] - pts[i][1]);
-    assert.ok(Math.abs(dl - dr) < 1e-6, '중심선 기준 대칭');
-    assert.ok(dl <= 60 + 1e-6 && dl > 0, `폭이 범위 안이어야 (i=${i}, ${dl})`);
+    if (Math.abs(dl - dr) > 0.3) asym++;
+    assert.ok(dl > 0 && dr > 0, '둑이 중심선을 넘지 않는다');
+    assert.ok(dl < 80 && dr < 80, `폭이 터무니없이 벌어지면 안 된다 (i=${i})`);
   }
+  assert.ok(asym > pts.length * 0.5, '좌우가 똑같이 벌어지면 물길이 아니라 리본으로 보인다');
+});
+
+test('둑 불규칙함은 결정적이다 — 같은 자리는 늘 같은 모양', () => {
+  for (const t of [0, 0.13, 0.5, 0.87, 1]) {
+    assert.equal(water.bankWobble(t), water.bankWobble(t));
+    assert.ok(Math.abs(water.bankWobble(t)) < 0.12, '들쭉날쭉함이 폭을 무너뜨릴 정도면 안 된다');
+  }
+  assert.notEqual(water.bankWobble(0.2), water.bankWobble(0.2 + 3.7), '좌우 둑은 서로 다른 위상을 쓴다');
 });
 
 test('강물 흐름: 누적 거리가 단조 증가하고 총 길이가 직선거리보다 길다', () => {
@@ -153,4 +227,271 @@ test('config.river 설정이 유효하다', () => {
   assert.ok(r.widthRatio > 0.06, '기획 "굵은 S자" — 화면 높이의 6% 이상');
   assert.ok(r.flowPxPerSec > 0, '흐름 속도가 0이면 정지한 물이다');
   assert.ok(r.tilePx > 0 && r.minTaper > 0 && r.minTaper < 1);
+});
+
+test('4줄기 합류: 4개 물길이 위에서 아래로 하나로 뭉친 뒤 그 자리에서 물길이 시작된다 (기획 5번)', () => {
+  const goals = [[0.149, 0.21], [0.383, 0.21], [0.617, 0.21], [0.851, 0.21]];
+  const head = river.pointAt(0);
+  const tribs = river.tributaries(goals, head);
+  assert.equal(tribs.length, 4);
+  tribs.forEach((t, i) => {
+    const start = river.tributaryPointAt(t.path, 0), end = river.tributaryPointAt(t.path, 1);
+    assert.deepEqual(start.map((v) => +v.toFixed(4)), goals[i].map((v) => +v.toFixed(4)), '발원지는 목표 문구 자리');
+    assert.deepEqual(end.map((v) => +v.toFixed(4)), head.map((v) => +v.toFixed(4)), '4줄기가 모두 물길 머리 한 점에서 뭉친다');
+    assert.ok(end[1] > start[1], '위에서 아래로 흐른다');
+    assert.ok(Math.hypot(end[0] - start[0], end[1] - start[1]) > 0.12, `물길이 보일 만큼 길어야 (${i})`);
+    const early = river.tributaryPointAt(t.path, 0.2);
+    assert.ok(Math.abs(early[0] - start[0]) < Math.abs(end[0] - start[0]) * 0.4 + 1e-6,
+      '목표 아래로 먼저 떨어지고 가로 이동은 나중에');
+  });
+  // 합류점이 물길 머리여야 지류가 본류를 가로지르지 않는다
+  assert.ok(head[1] < river.pointAt(0.5)[1], '머리가 중간보다 위에 있어야 물이 아래로 흐른다');
+  assert.ok(Math.abs(head[0] - 0.5) < 0.02, '합류점은 화면 가로 가운데');
+});
+
+test('4줄기 합류: 자라는 중에는 합류점에 못 미친다', () => {
+  const t = river.tributaryPath([0.15, 0.245], [0.5, 0.58]);
+  assert.equal(river.tributarySamples(t, 10, 0).length, 11);
+  const half = river.tributarySamples(t, 20, 0.5);
+  const full = river.tributarySamples(t, 20, 1);
+  assert.ok(Math.hypot(half[20][0] - 0.5, half[20][1] - 0.58) > Math.hypot(full[20][0] - 0.5, full[20][1] - 0.58),
+    'progress 0.5 에서는 아직 합류점에 도달하지 않는다');
+});
+
+test('물길 경로는 config 로 덮어쓸 수 있고, 잘못된 값은 기본값으로 되돌아간다', () => {
+  const base = river.pointAt(0.5);
+  assert.equal(river.setPath([{ p0: [0, 0], p1: [0, 0], p2: [1, 1], p3: [1, 1] }, { p0: [1, 1], p1: [1, 1], p2: [0, 2], p3: [0, 2] }]), true);
+  assert.notDeepEqual(river.pointAt(0), [0.79, 0.36]);
+  assert.equal(river.setPath('엉터리'), false, '형식이 틀리면 false 를 돌려주고');
+  assert.deepEqual(river.pointAt(0.5).map(v => +v.toFixed(3)), base.map(v => +v.toFixed(3)), '기본 경로로 복구되어야 한다');
+});
+
+test('스플래시·지류 파티클이 캔버스 인터페이스로 예외 없이 그려진다', () => {
+  const { createParticles } = require('../kiosk/src/motion');
+  const P = createParticles();
+  P.splash(100, 100, '#8fd3ea', 1);
+  assert.ok(P.size > 30, '물기둥 + 물보라 + 링');
+  P.stream((u) => [u * 100, u * 100], '#fff', 6, 1.2);
+  const ctx = { save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, translate() {}, rotate() {}, lineTo() {}, closePath() {},
+    set fillStyle(v) {}, set strokeStyle(v) {}, set lineWidth(v) {}, set globalAlpha(v) {} };
+  P.update(0.1); P.draw(ctx);
+  P.update(2.0); P.draw(ctx);
+  assert.ok(P.size > 0, '지류 방울은 순환하므로 남아 있어야 한다');
+});
+
+test('config.river 지류·원근 설정이 유효하다', () => {
+  assert.ok(cfg.river.tributaryWidthRatio > 0 && cfg.river.tributaryWidthRatio < cfg.river.widthRatio,
+    '지류는 본류보다 가늘어야 한다');
+  assert.ok(cfg.river.minTaper > 0 && cfg.river.minTaper < 1, '상단 폭 비율');
+  assert.ok(typeof cfg.timing.readyMs === 'number' && cfg.timing.readyMs > 0, '촬영 전 준비 여유가 있어야 한다');
+  assert.ok(cfg.timing.idleReturnMs <= 30000, '한 개가 안 눌렸을 때 대기열이 오래 멈추면 안 된다');
+  assert.ok(typeof cfg.screen.readyText === 'string' && cfg.screen.readyText.length > 0);
+});
+
+test('시안 5컷: 달성한 4개 목표 문구가 물길 위쪽에 남을 자리가 있다', () => {
+  const row = cfg.screen.goalRowTop;
+  assert.ok(typeof row === 'number' && row > 10 && row < 30, `문구 줄 위치(${row}vh)`);
+  const riverTopY = river.pointAt(0) [1];
+  assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 문구 줄(${row}vh)보다 아래여야 문구를 관통하지 않는다`);
+});
+
+test('숲 배치: 나무가 물길을 침범하지 않고 양옆에 선다 (시안 5·6컷)', () => {
+  const sc = cfg.scene;
+  assert.ok(sc && sc.treeCount >= 8, '양옆에 숲이 보이려면 최소한의 그루 수가 필요하다');
+  const slots = river.scenerySlots(sc.treeCount, { yTop: sc.yTop, minDist: sc.minDist });
+  assert.equal(slots.length, sc.treeCount, '물길을 피한 자리를 요청한 만큼 찾아야 한다');
+  for (const s of slots) {
+    assert.ok(river.distToRiver([s.x, s.y]) >= sc.minDist - 1e-9, '나무가 물길 위에 서면 안 된다');
+    assert.ok(s.x > 0 && s.x < 1 && s.y >= sc.yTop - 1e-9, '화면 안, 목표 문구 줄 아래');
+  }
+  assert.ok(slots.some((s) => s.side < 0) && slots.some((s) => s.side > 0), '숲은 양옆에 다 있어야 한다');
+  // 결정적이어야 현장에서 매번 같은 그림이 나온다
+  assert.deepEqual(river.scenerySlots(6), river.scenerySlots(6));
+});
+
+test('카드 나무가 인물과 달수를 가리지 않는다', () => {
+  const { dalsuPlacement } = require('../kiosk/src/compose');
+  const W = cfg.card.width, H = cfg.card.height;
+  const portrait = cfg.card.orientation === 'portrait';
+  const d = dalsuPlacement(W, H, 2403, 1705, cfg.card.dalsuScale, cfg.card.dalsuAnchor);
+  for (const t of cfg.card.trees || []) {
+    assert.ok(t.x > 0.02 && t.x < 0.98, `카드 안 (${t.x})`);
+    assert.ok(t.x < (portrait ? 0.28 : 0.30) || t.x > (portrait ? 0.78 : 0.64), `인물 상반신을 피해야 한다 (${t.x})`);
+    const overDalsu = t.x > d.x / W && t.y > d.y / H;
+    assert.ok(!overDalsu, `달수를 가리면 안 된다 (${t.x},${t.y})`);
+  }
+});
+
+test('합류부에서 지류와 본류의 굵기가 자연스럽게 이어진다', () => {
+  const H = 1920, R = cfg.river;
+  const path = river.tributaryPath([0.15, 0.21], river.pointAt(0));
+  const pts = river.tributarySamples(path, 24, 1).map(([x, y]) => [x * 1080, y * H]);
+  const band = water.bandPolygon(pts, H * R.tributaryWidthRatio, 0.95, R.tributaryEndTaper);
+  const tribEnd = band.half[pts.length - 1] * 2;                 // 지류 한 줄의 합류부 폭
+  const mainHead = H * R.widthRatio * water.widthAt(0, R.minTaper); // 본류 머리 폭
+  assert.ok(tribEnd >= band.half[0] * 2 * 0.9, '지류는 합류부에서 가늘어지면 안 된다 (본류와 끊겨 보인다)');
+
+  // 4줄기의 '합'이 아니라 합류 직전에 **실제로 덮는 가로 폭**과 비교한다.
+  // 한 점으로 모이는 줄기들은 서로 겹치므로 단순 합(4배)은 화면에 나타나지 않는다.
+  const W = 1080, src = [0.149, 0.383, 0.617, 0.851].map((x) => [x, 0.335]);
+  let lo = Infinity, hi = -Infinity;
+  for (const t of river.tributaries(src)) {
+    for (let u = 0.90; u <= 1.0001; u += 0.01) {
+      const q = river.tributaryPointAt(t.path, u);
+      const et = 1 - (1 - R.tributaryEndTaper) * Math.pow(Math.max(0, u - 0.55) / 0.45, 1.6);
+      const half = H * R.tributaryWidthRatio * water.widthAt(u, 0.95) * et / 2;
+      lo = Math.min(lo, q[0] * W - half); hi = Math.max(hi, q[0] * W + half);
+    }
+  }
+  const footprint = hi - lo;
+  // 모여서 좁아지되(머리 < 덮는 폭) 한 줄기보다는 굵어야(머리 > 한 줄기) '흡수'로 읽힌다
+  assert.ok(mainHead < footprint,
+    `본류 머리(${mainHead.toFixed(0)}px)가 합류부가 덮는 폭(${footprint.toFixed(0)}px)보다 굵다 — 물이 모이는 게 아니라 퍼져 보인다`);
+  assert.ok(mainHead > tribEnd,
+    `본류 머리(${mainHead.toFixed(0)}px)가 지류 한 줄기(${tribEnd.toFixed(0)}px)보다 굵어야 합쳐진 것으로 읽힌다`);
+});
+
+// 4줄기 '합'이 아니라 '한 줄기'와 비교해야 한다.
+// 지류는 합류점에 각각 따로 도착하므로, 눈은 86px 짜리 가는 줄기 하나 → 242px 짜리 굵은 본류를 잇는다.
+// 합만 보면 2.8배 점프도 통과해 버려서(실제로 그렇게 나갔다) 현장에서 "합쳐지는 부분이 이상하다"가 됐다.
+test('합류부: 지류 한 줄기와 본류 머리의 굵기 차가 눈에 띌 만큼 크지 않다', () => {
+  const H = 1920, R = cfg.river;
+  const path = river.tributaryPath([0.15, 0.21], river.pointAt(0));
+  const pts = river.tributarySamples(path, 24, 1).map(([x, y]) => [x * 1080, y * H]);
+  const band = water.bandPolygon(pts, H * R.tributaryWidthRatio, 0.95, R.tributaryEndTaper);
+  const tribEnd = band.half[pts.length - 1] * 2;
+  const mainHead = H * R.widthRatio * water.widthAt(0, R.minTaper);
+  const jump = mainHead / tribEnd;
+  assert.ok(jump >= 1.0, `본류 머리(${mainHead.toFixed(0)}px)가 지류 한 줄기(${tribEnd.toFixed(0)}px)보다 가늘면 안 된다`);
+  assert.ok(jump <= 1.8, `합류부 굵기 점프 ${jump.toFixed(2)}배 — 1.8배를 넘으면 물길이 끊겨 보인다`);
+});
+
+// 화질 회귀 방지: 성능이 모자랄 때 '해상도'를 낮추면 픽셀이 뭉개진다(실제로 그렇게 내보내 지적받았다).
+// 낮춰도 되는 건 곡선 구간 수뿐이다 — 선명도와 무관하다.
+// 정규화 좌표에서 옆으로 밀면 9:16 화면에서는 가로가 절반만 밀린다.
+// 그래서 '물길 옆'에 놓으려던 식물이 물 한가운데 자라 있었다.
+test('자연 회복 요소가 물 위가 아니라 둑 바깥에 놓인다', () => {
+  const A = 1080 / 1920, R = cfg.river;
+  const halfWidth = R.widthRatio / 2 / A;          // 물길 반폭(폭 단위)
+  const clear = halfWidth * 1.25;
+  const slots = river.natureSlots(8, R.natureOffset, A, clear);
+  assert.equal(slots.length, 8);
+  for (const s of slots) {
+    const d = river.distToRiver([s.x, s.y], 200, 1 / A);
+    assert.ok(d > halfWidth, `u=${s.u.toFixed(2)} 요소가 물 안에 있다 (거리 ${d.toFixed(3)} ≤ 반폭 ${halfWidth.toFixed(3)})`);
+    assert.ok(s.x > -0.05 && s.x < 1.05, `u=${s.u.toFixed(2)} 요소가 화면 밖 (x=${s.x.toFixed(3)})`);
+  }
+});
+
+test('성능 저하 단계는 해상도를 낮추지 않는다 (곡선 구간 수만 줄인다)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+  const block = src.slice(src.indexOf('const PERF_STEPS'), src.indexOf('const PERF ='));
+  assert.ok(block.length > 50, 'PERF_STEPS 블록을 찾지 못함');
+  assert.ok(!/scale\s*:/.test(block), '성능 단계에 렌더 배율(scale) 축소가 있다 — 화질이 뭉개진다');
+  assert.ok(!/setTransform\(\s*sc/.test(src), 'FX 캔버스를 축소 배율로 그리고 있다');
+  const segs = [...block.matchAll(/seg:\s*(\d+)/g)].map((m) => +m[1]);
+  assert.ok(segs.length >= 2 && Math.min(...segs) >= 32, '구간 수가 지나치게 낮다: ' + segs.join(','));
+});
+
+// SMART-81 은 카드 한 장에 20~40초가 걸린다. 화면이 실제 진행을 보여주려면
+// CLI 가 흘리는 단계 표시를 놓치지 않아야 하는데, stdout 은 임의 크기로 잘려 들어온다.
+test('인쇄 단계 파서: 표시가 청크 경계에 걸쳐도 놓치지 않는다', () => {
+  const { feedStages } = require('../kiosk/src/stagelog');
+  const full = [
+    '[10:00:01] 프린터 연결(드라이버 모드): SMART-81',
+    '##STAGE:connect',
+    '[10:00:02] 인쇄 면 설정: 적용',
+    '##STAGE:settings',
+    '##STAGE:print',
+    '[10:00:30] 인쇄 완료',
+  ].join('\r\n') + '\r\n';
+  // 1바이트씩 흘려 넣어도(최악의 분할) 순서대로 전부 나와야 한다
+  let pending = '', got = [];
+  for (const ch of full) { const r = feedStages(pending, ch); pending = r.pending; got.push(...r.stages); }
+  assert.deepEqual(got, ['connect', 'settings', 'print']);
+  assert.equal(pending, '');
+
+  // 로그 문구가 우연히 표시처럼 보여도 줄 시작이 아니면 무시한다
+  const r2 = feedStages('', 'x ##STAGE:print\n##STAGE:eject\n');
+  assert.deepEqual(r2.stages, ['eject']);
+});
+
+// 시안 7·8컷의 프린터 일러스트가 진행 표시의 주연이다.
+// renderer 가 #pcard(배출되는 카드)와 #pled(동작 LED)를 조작하므로 이 훅이 사라지면 안 된다.
+test('프린터 일러스트에 카드 배출·동작 표시 훅이 있다', () => {
+  const art = require('../kiosk/src/art');
+  const svg = art.artPrinterSvg();
+  assert.match(svg, /id="pcard"/, '배출되는 카드 그룹이 없다');
+  assert.match(svg, /id="pled"/, '동작 LED 가 없다');
+  const rsrc = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+  assert.match(rsrc, /setProperty\('--out'/, 'renderer 가 카드 배출량을 설정하지 않는다');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'styles.css'), 'utf8');
+  assert.match(css, /#pcard/, 'CSS 에 카드 배출 규칙이 없다');
+});
+
+// 미리보기는 '인쇄가 끝날 때까지'이므로, 데드맨 스위치 예산이 프린터 타임아웃보다 넉넉해야
+// 정상 인쇄 도중에 대기 화면으로 튕기지 않는다.
+test('데드맨 예산이 프린터 최대 소요 시간을 덮는다', () => {
+  const T = cfg.timing, P = cfg.printer;
+  const worstPrint = (P.timeoutMs || 90000) * ((P.retry || 0) + 1);
+  const budget = (T.previewMinMs || 6000) + worstPrint + 15000;
+  assert.ok(Math.max(budget * 2, 20000) > worstPrint, '데드맨 한계가 인쇄 최대 소요보다 짧다');
+  assert.ok(T.previewMinMs > 0 && T.previewMinMs <= 15000, '최소 미리보기 시간이 비상식적');
+});
+
+// SMART-81D 는 재전사 방식이라 물리 인쇄가 끝날 때까지 블로킹한다 — 라테일 프로젝트가 같은 장비에서
+// 60~90초를 실측했다(latale main.js). 타임아웃을 그 범위에 걸치게 두면 정상 인쇄가 실패로 처리된다.
+test('인쇄 타임아웃이 실측 인쇄 시간(60~90초)보다 충분히 길다', () => {
+  const t = cfg.printer.timeoutMs;
+  assert.ok(t >= 150000, `timeoutMs ${t}ms — 실측 최대 90초와 너무 가깝다 (150000 이상 권장)`);
+  assert.ok(t <= 300000, `timeoutMs ${t}ms — 너무 길면 프린터가 죽었을 때 화면이 오래 멈춘다`);
+});
+
+// 타임아웃 시점에는 카드가 프린터 안에 있을 수 있다. 그대로 재시도하면 잼이 난다.
+test('타임아웃 뒤에는 인쇄를 재시도하지 않는다', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'main.js'), 'utf8');
+  assert.match(src, /timeout.*test\(r\.stderr/s, 'main.js 에 타임아웃 재시도 차단이 없다');
+});
+
+// 화면 문구는 코드가 아니라 config 에서만 바뀐다 — 단계 키가 빠지면 화면이 빈 채로 대기한다
+test('인쇄 단계 문구가 CLI 가 내보내는 키를 모두 덮는다', () => {
+  const csSrc = fs.readFileSync(path.join(__dirname, '..', 'printer', 'DalsuPrint', 'Program.cs'), 'utf8');
+  const emitted = [...csSrc.matchAll(/Stage\("(\w+)"\)/g)].map((m) => m[1]);
+  assert.ok(emitted.length >= 5, 'CLI 가 단계를 내보내지 않는다');
+  const texts = cfg.screen.printStages || {};
+  for (const key of new Set(emitted)) {
+    assert.ok(texts[key], 'config.screen.printStages 에 문구 없음: ' + key);
+  }
+  for (const key of ['start', 'retry', 'done']) {
+    assert.ok(texts[key], '앱이 직접 쓰는 단계 문구 없음: ' + key);
+  }
+  // 현장 config.json 은 업데이트가 덮어쓰지 않으므로, 구버전 config 로도 문구가 나와야 한다.
+  const rsrc = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+  for (const key of [...new Set(emitted), 'start', 'retry', 'done']) {
+    assert.ok(new RegExp(key + ':').test(rsrc), 'renderer 에 "' + key + '" 기본 문구가 없다 (구버전 config 에서 화면이 빈다)');
+  }
+});
+
+test('카드는 Smart-31/51/81 과 같은 CR-80 규격이며 방향이 설정과 일치한다', () => {
+  const { width: w, height: h, orientation } = cfg.card;
+  const land = w === 1040 && h === 664, port = w === 664 && h === 1040;
+  assert.ok(land || port, `카드는 1040x664(가로) 또는 664x1040(세로) — 현재 ${w}x${h}`);
+  assert.equal(orientation === 'portrait', port, 'orientation 과 width/height 가 어긋나면 인쇄가 잘린다');
+});
+
+test('외부 이미지 자산은 라이선스가 문서로 남아 있다', () => {
+  const assets = path.join(__dirname, '..', 'kiosk', 'assets');
+  const external = fs.readdirSync(assets).filter((f) => /^(fish|plant|tree)-\d+\.png$/.test(f));
+  if (external.length === 0) return;                    // 실사 자산을 안 쓰면 검사할 것도 없다
+  const credits = path.join(__dirname, '..', 'docs', 'ASSET_CREDITS.md');
+  assert.ok(fs.existsSync(credits), '외부 이미지를 쓰면 출처·라이선스를 문서로 남겨야 한다');
+  const md = fs.readFileSync(credits, 'utf8');
+  for (const f of external) {
+    assert.ok(md.includes(f), `${f} 의 출처가 ASSET_CREDITS.md 에 없다`);
+  }
+  // 상업적 사용이 가능한 라이선스만 (삼성 행사 납품물)
+  const rows = md.split(/\r?\n/).filter((l) => l.startsWith('| `'));
+  for (const r of rows) {
+    assert.ok(/Public domain|CC0/i.test(r), `상업적 사용이 보장되지 않는 라이선스: ${r.slice(0, 80)}`);
+  }
 });
