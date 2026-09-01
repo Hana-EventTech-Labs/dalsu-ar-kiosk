@@ -147,14 +147,14 @@
   },
   "river": {
     "style": "water",
-    "widthRatio": 0.21,
+    "widthRatio": 0.28,
     "cardWidthRatio": 0.16,
     "flowPxPerSec": 95,
     "tilePx": 460,
     "minTaper": 0.3,
     "seed": 20260909,
-    "tributaryWidthRatio": 0.038,
-    "natureOffset": 0.17,
+    "tributaryWidthRatio": 0.05,
+    "natureOffset": 0.21,
     "tributaryEndTaper": 1.25,
     "quality": "auto",
     "tributaryMinTaper": 0.62,
@@ -163,14 +163,14 @@
       {
         "p0": [
           0.5,
-          0.38
+          0.36
         ],
         "p1": [
-          0.13,
-          0.4
+          0.17,
+          0.39
         ],
         "p2": [
-          0.12,
+          0.16,
           0.62
         ],
         "p3": [
@@ -184,11 +184,11 @@
           0.68
         ],
         "p1": [
-          0.87,
+          0.8,
           0.74
         ],
         "p2": [
-          0.85,
+          0.78,
           0.98
         ],
         "p3": [
@@ -206,7 +206,7 @@
       {
         "u": 0.73,
         "w": 0.07,
-        "k": 0.4
+        "k": 0.2
       }
     ]
   },
@@ -229,7 +229,7 @@
     "treeCount": 30,
     "treeSize": 0.115,
     "yTop": 0.3,
-    "minDist": 0.27,
+    "minDist": 0.34,
     "hillY": 0.4,
     "natureCount": 14,
     "natureUTo": 0.9,
