@@ -193,6 +193,9 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 
 /* 뷰파인더(카드 꽉 채움) 모드의 카운트다운 — 숫자를 가운데 두면 얼굴을 가린다. 우상단 구석으로, 작게.
    #countdown 의 어두운 그라데이션도 끈다 — 라이브 영상과 인쇄 미리보기를 잿빛으로 덮어 실제 인쇄색과 달라 보인다. */
+/* ⚠ #countdown 은 .screen 이라 #cam·오버레이 **위**에 있다 — 여기에 불투명 배경을 주면 카메라가 통째로 가려진다(실제로 그랬다).
+   틀 밖 위아래 띠는 #stage 자체 배경으로 칠한다(가장 아래 레이어). */
 #stage.vf #countdown { background: none; justify-content: flex-start; }
+#stage.vf[data-state="COUNTDOWN"], #stage.vf[data-state="CAPTURE"] { background: linear-gradient(#dbeaf3, #cfe3d6); }
 #stage.vf #count-num { position: absolute; top: 2.2cqh; right: 4.5cqw; left: auto; transform: none;
   width: 17cqw; height: 17cqw; line-height: 17cqw; font-size: 11cqw; }

@@ -1,6 +1,6 @@
 {
   "name": "dalsu-ar-kiosk",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "삼성 달수 AR 포토카드 키오스크 (KIWW 2026, 대구 엑스코)",
   "private": true,
   "main": "kiosk/main.js",

@@ -37,7 +37,6 @@
     "viewfinder": {
       "enabled": true,
       "width": 1.0,
-      "top": 0.06,
       "sceneAlpha": 0
     }
   },
@@ -226,10 +225,10 @@
     "arriveU": 0.82
   },
   "scene": {
-    "treeCount": 30,
-    "treeSize": 0.115,
+    "treeCount": 24,
+    "treeSize": 0.095,
     "yTop": 0.3,
-    "minDist": 0.34,
+    "minDist": 0.36,
     "hillY": 0.4,
     "natureCount": 14,
     "natureUTo": 0.9,

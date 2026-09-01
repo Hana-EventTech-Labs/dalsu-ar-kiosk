@@ -592,7 +592,8 @@
       const wRatio = Math.min(1.0, Math.max(0.4, VF.width || 0.7));   // 1.0 = 화면 폭 꽉 채움(카드가 곧 화면)
       const boxW = st.clientWidth * wRatio, boxH = boxW * card.height / card.width;
       const camH = boxW / (c.sw / c.sh);
-      const top = Math.max(0, Math.min(0.3, VF.top == null ? 0.13 : VF.top)) * st.clientHeight;
+      // 카드(664:1040)가 화면(9:16)보다 넓어 폭을 채우면 높이는 88% — 남는 12% 는 구조적이다. 위아래로 나눠 가운데 둔다.
+      const top = (VF.top == null ? Math.max(0, (st.clientHeight - boxH) / 2) : VF.top * st.clientHeight);
       st.classList.add('vf');
       st.style.setProperty('--vf-w', (wRatio * 100).toFixed(2) + '%');
       st.style.setProperty('--vf-h', (boxH / st.clientHeight * 100).toFixed(2) + '%');
@@ -1156,7 +1157,8 @@
   // 나무 자산을 '상자 안에 맞춰' 넣는다. 높이만 맞추면 가로로 넓은 덤불이 폭 1.8배로 그려져
   // 화면·카드를 혼자 덮는다(실제로 그랬다). 밑동이 (x, y)에 닿게 그린다.
   function drawTreeAsset(ctx, im, x, y, size, wide) {
-    const bw = size * (wide == null ? 1.25 : wide), bh = size * 1.15;
+    // 폭 상자를 1.25 로 두면 버드나무(801×640) 같은 넓은 자산이 강까지 덮는다 — 1.0 으로 조인다
+    const bw = size * (wide == null ? 1.0 : wide), bh = size * 1.15;
     const k = Math.min(bw / im.width, bh / im.height);
     const tw = im.width * k, th = im.height * k;
     ctx.drawImage(im, x - tw / 2, y - th, tw, th);
