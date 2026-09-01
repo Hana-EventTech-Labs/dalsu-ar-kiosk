@@ -3,6 +3,8 @@
 
 const easeOutBack = (p) => { const c = 1.70158; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
 const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+// 카메라 돌리용 — 시작과 끝이 모두 멈춰 있어야 '기계가 미는 줌'이 아니라 '사람이 든 카메라'로 보인다
+const easeInOutCubic = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
 // 헤엄 이징 — 등속 슬라이드가 아니라 "차고(surge) → 미끄러짐(glide)"이 반복되는 진행.
 // 도함수 1-0.6cos ≥ 0.4 이라 항상 전진(뒤로 가지 않음). strokes = 왕복 횟수.
 function swimEase(p, strokes) {
@@ -10,6 +12,19 @@ function swimEase(p, strokes) {
   const c = Math.min(1, Math.max(0, p));
   const w = 2 * Math.PI * k;
   return c - Math.sin(w * c) / w * 0.6;
+}
+// 도착 감속 — swimEase 는 끝(p=1)에서도 속도 0.4 라 달수가 **가다가 뚝 멈춘다**(현장 지적 "자연스럽게 끝까지").
+// 마지막 구간(tail)에서 남은 거리를 부드럽게 흡수해 속도가 0 으로 수렴하게 한다.
+//  · s' = e'(1-h) + (1-e)h' 로 모든 항이 ≥0 → 여전히 뒤로 가지 않는다.
+//  · p=1 에서 (1-e)=0, h'=0 이라 속도가 정확히 0.  스트로크 수·차는 순간의 위상은 그대로다.
+function swimArrive(p, strokes, tail) {
+  const c = Math.min(1, Math.max(0, p));
+  const e = swimEase(c, strokes);
+  const T = tail == null ? 0.16 : tail;
+  if (c <= 1 - T) return e;
+  const k = (c - (1 - T)) / T;
+  const h = k * k * (3 - 2 * k); const hh = h * h;          // smoothstep², 양 끝 기울기 0
+  return e + (1 - e) * hh;
 }
 // 헤엄 자세 — 한 번의 스트로크(θ 0→2π) 안에서 몸이 어떻게 움직이는가.
 // θ 는 swimEase 의 위상과 같은 값을 넣어야 몸짓과 실제 전진이 맞물린다(따로 돌면 '허우적'거려 보인다).
@@ -41,6 +56,27 @@ function swimPose(theta) {
     sink: 0.5 + Math.sin(t * 2 - 0.5) * 0.5,        // 물에 잠기는 정도 0~1 (그림자·물보라 세기에 쓴다)
     push,                                            // 물보라 세기
   };
+}
+
+// SWIM 카메라 줌 커브 — **진행도 p 만의 순수 함수**.
+// 벽시계가 아니라 진행도 기반이라 스모크의 시간 압축(기본 0.04배)에서도 같은 값이 나온다.
+// 이게 시간 기반이면 스모크 스냅샷은 줌이 안 걸린 화면만 찍게 된다.
+//   p 0~pushInFrom : 1배 유지 — 앞 컷(NATURE)의 지도 시점을 한 박자 남겨 상태 경계가 튀지 않게
+//   pushInFrom~To  : 1 → zoom 으로 돌리 인
+//   그 뒤           : zoom 유지 (도착이 감정적 정점이므로 그 순간은 클로즈업이어야 한다)
+// releaseAt 을 주면 SWIM 안에서 미리 빠져 '복구된 자연이 드러나는 와이드 리빌'이 된다.
+// 기본은 null — COUNTDOWN 의 readyMs 동안 빠진다(렌더러가 처리).
+function swimCamera(p, o) {
+  const c = Math.min(1, Math.max(0, p));
+  const opt = o || {};
+  if (opt.enabled === false) return { zoom: 1, k: 0 };
+  const z = opt.zoom == null ? 2.2 : opt.zoom;
+  const a = opt.pushInFrom == null ? 0.05 : opt.pushInFrom;
+  const b = opt.pushInTo == null ? 0.30 : opt.pushInTo;
+  let k = c <= a ? 0 : (c >= b ? 1 : easeInOutCubic((c - a) / Math.max(1e-6, b - a)));
+  const rel = opt.releaseAt;
+  if (rel != null && c > rel) k *= 1 - easeInOutCubic(Math.min(1, (c - rel) / Math.max(1e-6, 1 - rel)));
+  return { zoom: 1 + (z - 1) * k, k };
 }
 
 function createParticles() {
@@ -84,6 +120,18 @@ function createParticles() {
       // 퍼지는 링 2겹 (물 표면 파문)
       list.push({ kind: 'ring', x, y, r: 8 * s, vr: 1250 * s, life: 0.5, t: 0, color: 'rgba(255,255,255,.95)', w: 8 * s });
       list.push({ kind: 'ring', x, y, r: 4 * s, vr: 760 * s, life: 0.75, t: 0.08, color: 'rgba(190,230,246,.85)', w: 5 * s });
+    },
+    // 방향을 트는 순간의 물보라 — **링을 만들지 않는다**.
+    // splash/burst 의 퍼지는 링은 물길 밖 잔디 위에 흰 동그라미로 찍혀 "CG 도형"으로 읽힌다(이미 한 번 겪었다).
+    // 물방울만 짧게 튀기면 물길 안에서 흩어지고 밖으로 새도 눈에 띄지 않는다.
+    spray(x, y, color, n, scale) {
+      const s = scale || 1;
+      for (let i = 0; i < (n || 14); i++) {
+        const a = rnd(0, Math.PI * 2), v = rnd(160, 460) * s;
+        list.push({ kind: 'drop', x: x + rnd(-6, 6) * s, y: y + rnd(-5, 5) * s,
+          vx: Math.cos(a) * v, vy: Math.sin(a) * v - 140 * s,
+          r: rnd(3.5, 9) * s, g: 1100 * s, life: rnd(0.35, 0.62), t: 0, color });
+      }
     },
     // 지류를 따라 흐르는 물방울 — 4줄기 합류 연출용. path(u)->[x,y] 를 받아 그 위를 흘러간다
     stream(pathFn, color, n, dur, scale) {
@@ -156,6 +204,6 @@ function createSound(enabled) {
   };
 }
 
-{ const __exports = { easeOutBack, easeInOut, swimEase, swimPose, swimUndulate, createParticles, createSound };
+{ const __exports = { easeOutBack, easeInOut, easeInOutCubic, swimEase, swimArrive, swimPose, swimUndulate, swimCamera, createParticles, createSound };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }

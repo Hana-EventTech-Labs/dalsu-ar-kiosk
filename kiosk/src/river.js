@@ -50,6 +50,44 @@ function samples(n) {
   return out;
 }
 
+// ---------- 호길이 재매개화 ----------
+// 베지에의 매개변수 u 는 길이에 비례하지 않는다. 이 물길은 위쪽 굽이가 촘촘해서
+// u 를 등속으로 흘리면 가운데에서 느려졌다가 끝에서 튕기듯 빨라진다 — 측정하면 구간 속도가 2.5배까지 벌어졌다.
+// 헤엄의 빠르고 느림은 스트로크(motion.swimEase)만이 만들어야 하므로, 진행도를 **길이 기준**으로 바꾼다.
+// aspect = 화면 폭/높이 (9:16 이면 0.5625). 정규화 좌표에서 가로와 세로의 실제 길이가 다르기 때문에 필요하다.
+const ARC_N = 512;
+const ARC_ASPECT = 1080 / 1920;
+let arcCache = null;
+function arcTable(aspect) {
+  const a = aspect || ARC_ASPECT;
+  if (arcCache && arcCache.aspect === a && arcCache.segs === SEGMENTS) return arcCache;
+  const cum = [0];
+  let prev = pointAt(0);
+  for (let i = 1; i <= ARC_N; i++) {
+    const q = pointAt(i / ARC_N);
+    cum.push(cum[i - 1] + Math.hypot((q[0] - prev[0]) * a, q[1] - prev[1]));
+    prev = q;
+  }
+  arcCache = { aspect: a, segs: SEGMENTS, cum };
+  return arcCache;
+}
+// 구간 [uFrom,uTo] 안에서 '길이의 s 배(0~1)만큼 간 지점'의 매개변수 u
+function uAtArc(s, uFrom, uTo, aspect) {
+  const a0 = uFrom == null ? 0 : uFrom, a1 = uTo == null ? 1 : uTo;
+  const cum = arcTable(aspect).cum;
+  const at = (u) => {
+    const x = Math.min(1, Math.max(0, u)) * ARC_N, i = Math.floor(x);
+    return i >= ARC_N ? cum[ARC_N] : cum[i] + (cum[i + 1] - cum[i]) * (x - i);
+  };
+  const L0 = at(a0), L1 = at(a1);
+  const target = L0 + (L1 - L0) * Math.min(1, Math.max(0, s));
+  let lo = 0, hi = ARC_N;                       // cum 은 단조증가 — 이분 탐색
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < target) lo = mid + 1; else hi = mid; }
+  const i = Math.max(1, lo);
+  const d = cum[i] - cum[i - 1];
+  return (i - 1 + (d > 1e-12 ? (target - cum[i - 1]) / d : 0)) / ARC_N;
+}
+
 // ---------- 지류(합류 전 4줄기) ----------
 // 물방울 자리 → 합류점으로 흐르는 곡선.
 // 제어점을 발원지 **바로 아래**에 두어, 물이 물방울에서 수직으로 흘러내리다가 중앙으로 꺾이게 한다.
@@ -151,9 +189,9 @@ function mapBox([x, y], box) {
 }
 function pointIn(u, box) { return mapBox(pointAt(u), box); }
 function samplesIn(n, box) { return samples(n).map((p) => mapBox(p, box)); }
-function natureSlotsIn(count, offset, box, aspect, clearance) {
+function natureSlotsIn(count, offset, box, aspect, clearance, uTo) {
   const b = box || FULL_BOX;
-  return natureSlots(count, offset, aspect, clearance).map((s) => {
+  return natureSlots(count, offset, aspect, clearance, uTo).map((s) => {
     const [x, y] = mapBox([s.x, s.y], b);
     return { ...s, x, y };
   });
@@ -179,12 +217,16 @@ function svgPath(w, h) {
 // 정규화 좌표에서 그냥 밀면 9:16 화면에서 가로는 절반만 밀려 식물이 물 한가운데 놓인다 — 실제로 그렇게 나갔다.
 // 그래서 (x*aspect, y) 라는 '높이 단위' 공간에서 법선을 잡고 되돌린다.
 const FULL_ASPECT = 1080 / 1920;
-function natureSlots(count, offset, aspect, clearance) {
+// uTo: 슬롯을 물길의 이 진행도까지만 배치한다(기본 1 = 물길 전체).
+// 달수는 u=0.5 까지만 내려가는데 슬롯이 전 구간에 퍼져 있으면 **절반이 달수가 가지 않는 하류에서 핀다** —
+// "달수의 진행이 생명을 번지게 한다"는 기획이 관객에게 절반만 보이던 원인이다.
+function natureSlots(count, offset, aspect, clearance, uTo) {
   const off = offset == null ? 0.12 : offset;
   const a = aspect || FULL_ASPECT;
+  const span = uTo == null ? 1 : Math.min(1, Math.max(0.05, uTo));
   const out = [];
   for (let i = 0; i < count; i++) {
-    const u = (i + 1) / (count + 1);
+    const u = ((i + 1) / (count + 1)) * span;
     const [x, y] = pointAt(u);
     const [x2, y2] = pointAt(Math.min(1, u + 0.004));
     const dx = (x2 - x) * a, dy = y2 - y;
@@ -214,6 +256,6 @@ function natureSlots(count, offset, aspect, clearance) {
 }
 
 // 브라우저(renderer, contextIsolation)에서는 전역으로, node(test)에서는 module.exports로 노출
-{ const __exports = { get SEGMENTS() { return SEGMENTS; }, DEFAULT_SEGMENTS, setPath, tributaryPath, tributaryPointAt, tributarySamples, tributaries, nearestU, distToRiver, scenerySlots, FULL_BOX, pointAt, angleAt, samples, svgPath, natureSlots, pointIn, samplesIn, samplesRange, natureSlotsIn };
+{ const __exports = { get SEGMENTS() { return SEGMENTS; }, DEFAULT_SEGMENTS, setPath, uAtArc, tributaryPath, tributaryPointAt, tributarySamples, tributaries, nearestU, distToRiver, scenerySlots, FULL_BOX, pointAt, angleAt, samples, svgPath, natureSlots, pointIn, samplesIn, samplesRange, natureSlotsIn };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }

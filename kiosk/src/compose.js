@@ -12,6 +12,27 @@ function coverCrop(srcW, srcH, dstW, dstH) {
   return { sx: Math.round((srcW - sw) / 2), sy: Math.round((srcH - sh) / 2), sw, sh };
 }
 
+// 촬영 사진을 카드에 앉히는 자리. zoom=1 이면 coverCrop 과 완전히 같다(전면 채움).
+//
+// 왜 필요한가: 웹캠은 1280x720(가로 1.78)인데 카드는 664x1040(세로 0.64)이라
+// cover 로 채우면 **화면 가로의 36%(459/1280)만 잘라 쓴다** — 인물이 2.8배로 확대돼 얼굴이 카드를 덮는다.
+// 해상도를 올려도 비율 문제라 그대로다. 유일한 해법은 더 넓게 잘라 **위쪽 띠로 앉히고**
+// 남는 아래를 장면이 채우는 것이다.
+//   zoom 0.62 → 소스 740px 폭을 쓰고 카드 높이의 62%를 차지한다(인물이 38% 작아진다).
+function photoCrop(srcW, srcH, dstW, dstH, zoom) {
+  const cover = coverCrop(srcW, srcH, dstW, dstH);
+  const z = Math.min(1, Math.max(0.35, zoom == null ? 1 : zoom));
+  // zoom 1 은 예전 동작과 **비트 단위로 같아야** 한다(반올림으로 1px 틈이 생기면 카드 아래가 비친다).
+  if (z >= 0.999) return { sx: cover.sx, sy: cover.sy, sw: cover.sw, sh: cover.sh, dx: 0, dy: 0, dw: dstW, dh: dstH };
+  const sw = Math.min(srcW, Math.round(cover.sw / z));
+  const sh = Math.min(srcH, Math.round(cover.sh / z));
+  const k = dstW / sw;
+  return {
+    sx: Math.round((srcW - sw) / 2), sy: Math.round((srcH - sh) / 2), sw, sh,
+    dx: 0, dy: 0, dw: dstW, dh: Math.min(dstH, Math.round(sh * k)),
+  };
+}
+
 // 달수 캐릭터 배치: **카드의 짧은 변** 대비 scale, 앵커 기준 위치.
 // 짧은 변을 기준으로 잡아야 가로/세로 카드에서 캐릭터 크기가 같아 보인다
 // (세로 카드에서 높이 기준으로 잡으면 캐릭터가 폭을 넘어 인물을 덮는다).
@@ -81,6 +102,6 @@ function natureCardSlots(count, top, zones) {
 }
 
 // 브라우저(renderer, contextIsolation)에서는 전역으로, node(test)에서는 module.exports로 노출
-{ const __exports = { coverCrop, dalsuPlacement, artBox, natureCardSlots, CARD_NATURE_ZONES, CARD_NATURE_ZONES_PORTRAIT, LAYERS };
+{ const __exports = { coverCrop, photoCrop, dalsuPlacement, artBox, natureCardSlots, CARD_NATURE_ZONES, CARD_NATURE_ZONES_PORTRAIT, LAYERS };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }

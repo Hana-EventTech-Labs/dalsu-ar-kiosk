@@ -10,3 +10,6 @@ dist/
 # 배포 산출물 (수백 MB) — 릴리스로 올리되 저장소에는 두지 않는다
 DalsuARKiosk-*.zip
 DalsuARKiosk-*.exe
+
+# 파이썬 캐시
+__pycache__/

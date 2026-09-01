@@ -14,6 +14,20 @@ const ART_ICONS = {
     + '<path d="M10 50V28l13 8V28l13 8V16h10v34z"/>'
     + '<path d="M8 56h48"/><path d="M14 44h4M28 44h4M42 44h4"/></g>',
   sprout: '<path d="M32 56V30M32 30c-14 0-18-10-18-18 10 0 18 6 18 18zM32 34c14 0 18-10 18-18-10 0-18 6-18 18z" fill="none" stroke="#2f3a44" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>',
+  // ---- 2026-09-01 콘텐츠 수정: Reduce / Reuse / Recycle / Return (물 순환 4단계) ----
+  // Reduce — 물방울 + 아래 화살표(사용량을 줄인다)
+  reduce: '<g fill="none" stroke="#2f3a44" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">'
+    + '<path d="M26 8c8 11 14 18 14 26a14 14 0 0 1-28 0c0-8 6-15 14-26z"/>'
+    + '<path d="M50 32v22M43 47l7 7 7-7"/></g>',
+  // Reuse — 물방울 둘레를 도는 두 화살표(다시 쓴다)
+  reuse: '<g fill="none" stroke="#2f3a44" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">'
+    + '<path d="M32 22c4 5 7 9 7 13a7 7 0 0 1-14 0c0-4 3-8 7-13z"/>'
+    + '<path d="M50 30a19 19 0 0 0-33-9M14 34a19 19 0 0 0 33 9"/>'
+    + '<path d="M17 12v10h10M47 52V42H37"/></g>',
+  // Return — 물방울이 새싹(자연)으로 돌아간다
+  return_: '<g fill="none" stroke="#2f3a44" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">'
+    + '<path d="M32 6c5 7 9 12 9 17a9 9 0 0 1-18 0c0-5 4-10 9-17z"/>'
+    + '<path d="M32 34v22"/><path d="M32 46c-10 0-14-7-14-13 8 0 14 5 14 13zM32 50c10 0 14-7 14-13-8 0-14 5-14 13z"/></g>',
 };
 function artIconSvg(key, color) {
   const c = color || '#2f3a44';
@@ -142,7 +156,10 @@ const ART_TREES = {
 };
 const ART_TREE_ORDER = ['pine', 'round', 'bush', 'round', 'pine', 'round', 'bush', 'pine', 'round', 'bush', 'round', 'pine', 'round', 'bush'];
 
-const ART_NATURE_ORDER = ['leaf', 'fish', 'flower', 'dragonfly', 'leaf', 'fish', 'flower', 'leaf'];
+// 자연 회복 등장 순서. **앞 8개는 절대 바꾸지 않는다** — 카메라를 끄면 예전 그림이 그대로 나와야 한다.
+// 뒤 8개는 카메라로 당겼을 때 화면이 허전해지지 않도록 늘린 몫이다(물 위에 놓이는 건 fish 뿐).
+const ART_NATURE_ORDER = ['leaf', 'fish', 'flower', 'dragonfly', 'leaf', 'fish', 'flower', 'leaf',
+  'fish', 'leaf', 'flower', 'fish', 'dragonfly', 'leaf', 'flower', 'fish'];
 // 카드 앞면용 — 강물을 넣지 않으므로 물고기는 뺀다 (물 없이 떠 있는 물고기가 되면 안 된다)
 const ART_NATURE_CARD_ORDER = ['leaf', 'flower', 'dragonfly', 'leaf', 'flower', 'leaf', 'dragonfly', 'flower'];
 

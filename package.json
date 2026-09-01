@@ -1,6 +1,6 @@
 {
   "name": "dalsu-ar-kiosk",
-  "version": "0.6.7",
+  "version": "0.7.2",
   "description": "삼성 달수 AR 포토카드 키오스크 (KIWW 2026, 대구 엑스코)",
   "private": true,
   "main": "kiosk/main.js",
@@ -15,11 +15,17 @@
     "check": "npm test && npm run smoke",
     "build:demo": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-demo.ps1",
     "assets:web": "python scripts/cutout-web-assets.py",
-    "build:update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-update.ps1"
+    "build:update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-update.ps1",
+    "assets:swim": "python scripts/key-swim-sheet.py && python scripts/verify-swim-sheet.py",
+    "assets:swim:plate": "python scripts/make-swim-plate.py",
+    "record": "electron kiosk/main.js --record",
+    "assets:water": "python scripts/make-water-tile.py",
+    "release": "electron-builder --win --publish always"
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "ffmpeg-static": "^5.3.0"
   },
   "build": {
     "appId": "kr.hanapf.dalsu.arkiosk",
@@ -58,15 +64,31 @@
     "win": {
       "icon": "kiosk/assets/icon.ico",
       "target": [
-        "portable",
+        "nsis",
         "zip"
       ],
       "artifactName": "DalsuARKiosk-${version}-${os}.${ext}"
     },
-    "portable": {
-      "artifactName": "DalsuARKiosk-demo-${version}.exe"
+    "compression": "normal",
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "DalsuARKiosk-Setup-${version}.${ext}"
     },
-    "compression": "normal"
+    "publish": {
+      "provider": "github",
+      "owner": "Hana-EventTech-Labs",
+      "repo": "dalsu-ar-kiosk",
+      "releaseType": "release"
+    }
   },
-  "author": "Hana Platform <hanalabs@hanapf.kr>"
+  "author": "Hana Platform <hanalabs@hanapf.kr>",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
 }

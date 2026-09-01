@@ -1,3 +1,9 @@
+/* 삼성 서체 — 2026-09-01 클라이언트 요청으로 전면 적용. Head = 제목, Body = 본문(18pt 이하). 디지털(Web/App)용 KR 컷. */
+@font-face { font-family: 'Samsung SS Head KR'; font-weight: 700; font-style: normal; font-display: block; src: url(./samsung/SamsungSSHeadDigKR-Bold.woff2) format('woff2'); }
+@font-face { font-family: 'Samsung SS Head KR'; font-weight: 500; font-style: normal; font-display: block; src: url(./samsung/SamsungSSHeadDigKR-Medium.woff2) format('woff2'); }
+@font-face { font-family: 'Samsung SS Body KR'; font-weight: 700; font-style: normal; font-display: block; src: url(./samsung/SamsungSSBodyDigKR-Bold.woff2) format('woff2'); }
+@font-face { font-family: 'Samsung SS Body KR'; font-weight: 400; font-style: normal; font-display: block; src: url(./samsung/SamsungSSBodyDigKR-Regular.woff2) format('woff2'); }
+
 @font-face {
   font-family: 'Gowun Dodum';
   font-style: normal;

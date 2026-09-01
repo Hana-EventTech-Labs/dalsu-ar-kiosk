@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; media-src blob:; style-src 'unsafe-inline';">
+  <title>frame grabber</title>
+  <style>body { margin: 0; background: #111; color: #ddd; font: 12px monospace; }</style>
+</head>
+<body>
+<div id="s">대기</div>
+<script>
+'use strict';
+// 영상 → PNG 프레임.
+//
+// 처음에는 저속 재생 + requestVideoFrameCallback 으로 받으려 했다. 실패했다 —
+// PNG 인코딩(1920x1080 에서 수백 ms) 동안에도 재생이 계속돼 프레임을 통째로 놓쳤고(실측 107장 드롭),
+// 인코딩 직전에 pause() 를 불러도 막히지 않았다.
+// → **균등 간격 시킹**으로 바꿨다. 원본 프레임을 하나도 빠짐없이 받는 게 목적이 아니라
+//   '균등한 시간 간격의 표본'이 목적이다(어차피 24프레임 사이클로 리샘플한다). 시킹은 그걸 정확히 준다.
+//   요청 시각과 실제 currentTime 의 오차를 기록해 두면 표본이 고른지 나중에 확인할 수 있다.
+const S = document.getElementById('s');
+const say = (t) => { S.textContent = t; };
+
+(async () => {
+  try {
+    const info = await window.grab.load();                 // { bytes, count }
+    const blob = new Blob([info.bytes], { type: 'video/mp4' });
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.src = URL.createObjectURL(blob);
+    await new Promise((res, rej) => {
+      v.onloadeddata = res;
+      v.onerror = () => rej(new Error('영상 디코딩 실패 — 코덱을 확인할 것'));
+    });
+
+    const cv = document.createElement('canvas');
+    cv.width = v.videoWidth; cv.height = v.videoHeight;
+    const c = cv.getContext('2d');
+    const K = info.count;
+    const dur = Math.max(0.1, v.duration - 0.02);          // 아주 끝은 디코더가 불안정할 수 있어 건드리지 않는다
+    const meta = { w: v.videoWidth, h: v.videoHeight, duration: v.duration, count: K, frames: [] };
+
+    const seek = (t) => new Promise((res) => { v.onseeked = () => res(); v.currentTime = t; });
+
+    let maxErr = 0;
+    for (let i = 0; i < K; i++) {
+      const want = dur * i / K;
+      await seek(want);
+      const got = v.currentTime;
+      maxErr = Math.max(maxErr, Math.abs(got - want));
+      c.drawImage(v, 0, 0, cv.width, cv.height);           // 1:1, 배율 없음
+      const b = await new Promise((r) => cv.toBlob(r, 'image/png'));
+      await window.grab.save(i, new Uint8Array(await b.arrayBuffer()));
+      meta.frames.push({ i, want: +want.toFixed(5), got: +got.toFixed(5) });
+      say('프레임 ' + (i + 1) + '/' + K + '  t=' + got.toFixed(3));
+    }
+    meta.maxSeekErr = +maxErr.toFixed(4);
+    await window.grab.done(meta);
+  } catch (e) {
+    say('실패: ' + e.message);
+    await window.grab.fail(String(e && e.message || e));
+  }
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,9 @@
 모든 항목을 체크한 뒤 운영에 들어갑니다.
 
 ## A. 설치 (10분)
+- [ ] **설치형 사용**: GitHub Release 의 `DalsuARKiosk-Setup-X.Y.Z.exe` 실행(원클릭, 사용자별). 이후 새 버전은 대기 화면에서 자동 적용된다.
+      설정·출력·로그는 `문서\DalsuARKiosk\` 에 생긴다 (config.json 도 여기). zip 으로 풀어 쓰면 자동 업데이트가 안 된다.
+- [ ] 인터넷 연결 확인 (자동 업데이트용). 없어도 앱은 정상 동작 — 로그에 '업데이트 확인 실패'만 남는다.
 - [ ] Node.js 22 LTS 설치 (`node -v`)
 - [ ] .NET 8 Desktop Runtime x64 설치
 - [ ] Smart-81D 드라이버 설치 + USB 연결 + 전원 ON, 카드 호퍼 장착, YMCKO 리본 장착
