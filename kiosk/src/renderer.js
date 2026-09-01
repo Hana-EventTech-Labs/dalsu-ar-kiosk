@@ -200,6 +200,7 @@
   function setState() {
     stage.dataset.state = flow.state;
     lastStateAt = performance.now(); lastStateName = flow.state;
+    try { if (window.kiosk.reportState) window.kiosk.reportState(flow.state); } catch (e) { /* noop */ }
   }
   // 데드맨 스위치 — 어떤 상태에서든 연출이 멈추면 무인 키오스크가 영원히 정지한다.
   // idleReturnMs 는 GUIDE에서만 동작하므로 그 밖의 상태를 이걸로 덮는다.

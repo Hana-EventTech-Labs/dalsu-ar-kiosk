@@ -271,6 +271,18 @@ dalsu-ar-kiosk/
     `var x = null` 로 쓰면 먼저 세팅된 값을 null 로 덮어써 틀 도려내기·오버레이가 조용히 꺼진다(실제로 그랬다).
   · `enabled:false` 면 예전(전면 미리보기)으로 돌아간다. 얼굴이 카드에 너무 크면 이것과 별개로 `card.photoZoom` 을 낮춘다.
 
+## 배포 · 자동 업데이트 (2026-09-01)
+- **릴리스 = 태그**: `package.json` 버전을 올리고 `git tag vX.Y.Z && git push --tags` 하면 `.github/workflows/release.yml` 이
+  테스트 → 인쇄 CLI 빌드 → 스모크 → 인스톨러/zip 빌드 → GitHub Release 업로드까지 한다. 태그와 package.json 버전이 다르면 실패한다.
+- **키오스크는 설치형(NSIS) 으로 설치**한다(`DalsuARKiosk-Setup-X.Y.Z.exe`, 사용자별 원클릭). 설치형만 자동 업데이트가 된다 —
+  zip/포터블 실행본은 수동 교체. 설치형의 **데이터 폴더는 `문서\DalsuARKiosk`**(config.json / out / logs) — 업데이트 때 설치 폴더가 갈려도 보존된다.
+  시작 로그의 `data` 경로가 곧 현장에서 config.json 을 찾을 위치다.
+- 업데이트 규칙(`main.js setupAutoUpdate`): 시작 15초 후 + `config.update.checkMinutes`(60)마다 확인, 백그라운드 다운로드,
+  **렌더러가 IDLE 로 `idleSeconds`(20) 이상 머물 때만** 재시작해 적용. 체험 도중엔 절대 끼어들지 않는다. 실패는 로그만 남기고 현재 버전 유지.
+  끄기: `config.update.enabled:false` 또는 `--no-update`.
+- 저장소는 행사 기간 **공개**로 전환했다(2026-09-01, 키오스크가 토큰 없이 Release 를 받기 위해). 행사 후 비공개로 되돌리려면
+  자동 업데이트도 같이 끄거나 토큰 방식으로 바꿔야 한다.
+
 ## 명령
 ```bash
 npm install                 # kiosk 의존성 (electron)
@@ -283,6 +295,7 @@ npm run assets              # .ai → PNG 변환(+파편 제거) + 뒷면 카드
 npm run assets:swim:plate   # 헤엄 사이클 생성용 시작 플레이트 (크로마 그린)
 npm run assets:swim         # 프레임 → 스프라이트 시트 + 자동 검증 (일회성 오프라인 작업)
 npm run record              # 데모 영상 녹화 → out/demo/*.mp4 (대기~헤엄, 촬영 화면 제외)
+npm run release             # 로컬에서 빌드 + GitHub Release 업로드 (GH_TOKEN 필요; 보통은 태그 푸시로 CI 가 한다)
 printer/dist/DalsuPrint.exe --list                       # 프린터 목록
 printer/dist/DalsuPrint.exe --front a.png --back b.png   # 실제 인쇄
 ```

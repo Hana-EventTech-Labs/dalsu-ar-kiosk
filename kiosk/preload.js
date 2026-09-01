@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('kiosk', {
   printStats: () => ipcRenderer.invoke('print:stats'),   // 직전·평균 인쇄 소요(ms)
   rerunPreflight: () => ipcRenderer.invoke('preflight:rerun'),
   swimMeta: () => ipcRenderer.invoke('asset:swimMeta'),
+  reportState: (st) => ipcRenderer.invoke('flow:state', st),   // 자동 업데이트 적용 시점(대기 화면) 판단용
   snap: (name) => ipcRenderer.invoke('snap', name),
   recordStop: () => ipcRenderer.invoke('record:stop'),
   quit: () => ipcRenderer.invoke('app:quit'),

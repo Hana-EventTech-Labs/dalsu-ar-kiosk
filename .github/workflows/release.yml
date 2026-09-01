@@ -1,0 +1,45 @@
+name: release
+
+# 태그 v* 를 푸시하면: 테스트 → 인쇄 CLI 빌드 → 스모크 → 인스톨러/zip 빌드 → GitHub Release 업로드.
+# 키오스크 앱은 Release 를 보고 자동 업데이트한다(대기 화면일 때만 적용).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 8.0.x }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: 태그와 package.json 버전 일치 확인
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $ver = (Get-Content package.json | ConvertFrom-Json).version
+          if ($tag -ne $ver) { throw "태그 v$tag 와 package.json $ver 가 다릅니다" }
+
+      - run: npm ci
+      - run: npm run build:printer
+      - run: npm test
+      - name: 스모크 (dry-run, 모의 웹캠)
+        run: npm run smoke
+      - name: 실기 해상도 스모크
+        run: npx electron kiosk/main.js --smoke --smoke-emulate=1080x1920
+
+      - name: 빌드 + Release 업로드
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always --config.directories.output=dist/ci

@@ -9,9 +9,13 @@ const { feedStages } = require('./src/stagelog');   // 인쇄 진행 단계 파�
 const ROOT = __dirname;                                   // 앱 리소스 kiosk/ (패키징 시 resources/app/kiosk)
 // 데이터 루트 — 배포 exe 옆(설정·출력·로그를 현장에서 바로 열 수 있게). 개발 시에는 저장소 루트.
 // portable(단일 exe) 빌드는 임시폴더로 풀리므로, 사용자가 둔 exe 위치(PORTABLE_EXECUTABLE_DIR)를 우선한다.
+// 설치형(NSIS, 자동 업데이트 대상)은 업데이트 때 설치 폴더가 통째로 갈리므로 데이터를 **문서\DalsuARKiosk** 에 둔다.
+// 포터블 exe·zip 풀어 쓰기는 예전처럼 exe 옆. 시작 로그의 data 경로가 곧 현장에서 config.json 을 찾을 위치다.
+const IS_INSTALLED = app.isPackaged && fs.existsSync(path.join(path.dirname(app.getPath('exe')), 'Uninstall DalsuARKiosk.exe'));
 const DATA_ROOT = app.isPackaged
-  ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')))
+  ? (IS_INSTALLED ? path.join(app.getPath('documents'), 'DalsuARKiosk') : (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe'))))
   : path.resolve(ROOT, '..');
+if (app.isPackaged) { try { fs.mkdirSync(DATA_ROOT, { recursive: true }); } catch (e) { /* 아래 config 복사에서 다시 시도 */ } }
 const BUNDLED_CONFIG = path.join(ROOT, 'config.json');
 // 배포본은 exe 옆 config.json을 쓴다(없으면 번들본을 1회 복사) — 현장에서 메모장으로 수정 가능
 const CONFIG_PATH = app.isPackaged ? path.join(DATA_ROOT, 'config.json') : BUNDLED_CONFIG;
@@ -25,6 +29,7 @@ const REC_OUT = (REC_ARG && REC_ARG.includes('=')) ? REC_ARG.split('=').slice(1)
 const REC_BITRATE = +((process.argv.find((a) => a.startsWith('--record-bitrate=')) || '').split('=')[1]) || 6000000;
 const SMOKE_SOAK = parseInt((process.argv.find((a) => a.startsWith('--smoke-soak=')) || '').split('=')[1] || '0', 10) || 0;
 const IS_SMOKE = ARGS.has('--smoke') || IS_RECORD || SMOKE_SOAK > 0;
+const NO_UPDATE = ARGS.has('--no-update');
 // 배포 exe는 더블클릭만으로 전체화면 키오스크. 창 모드가 필요하면 --windowed (개발 npm start는 창 모드 유지)
 const IS_KIOSK = ARGS.has('--kiosk') || (app.isPackaged && !IS_SMOKE && !ARGS.has('--windowed'));
 const SMOKE_SPEED = (process.argv.find((a) => a.startsWith('--smoke-speed=')) || '').split('=')[1] || '';
@@ -289,7 +294,7 @@ async function runPreflight() {
 app.whenReady().then(async () => {
   // 웹캠 권한 자동 허용 (키오스크는 프롬프트 불가)
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
-  log('INFO', `앱 시작 v${BUILD.version} (${BUILD.builtAt}) mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
+  log('INFO', `앱 시작 v${BUILD.version} (${BUILD.builtAt}) mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged} installed=${IS_INSTALLED}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
   // 하드웨어 가속 여부 — CPU 렌더링(SwiftShader)이면 물 연출이 끊긴다. 현장 진단의 첫 단서.
   try {
     const g = app.getGPUFeatureStatus() || {};
@@ -310,6 +315,7 @@ app.whenReady().then(async () => {
   setInterval(memLog, SMOKE_SOAK ? 10000 : 3600000);
   const win = createWindow();
   if (IS_RECORD) startRecorder(win);
+  setupAutoUpdate();
   // 24시간 무인 운영 — 렌더러가 죽거나(메모리·드라이버) 멈추면 사람이 올 때까지 검은 화면이다. 스스로 되살린다.
   if (!IS_SMOKE) {
     win.webContents.on('render-process-gone', (_e, d) => {
@@ -401,6 +407,43 @@ ipcMain.handle('record:stop', () => {
 });
 
 ipcMain.handle('config:get', () => ({ ...config, build: BUILD }));
+// 렌더러가 상태가 바뀔 때마다 알려준다 — 자동 업데이트 적용 시점(대기 화면) 판단용
+let rendererState = 'IDLE', rendererStateAt = Date.now();
+ipcMain.handle('flow:state', (_e, st) => { rendererState = String(st || ''); rendererStateAt = Date.now(); return true; });
+
+// ---------- 자동 업데이트 (GitHub Releases) ----------
+// 태그 v* 푸시 → CI 가 Release 에 인스톨러 업로드 → 키오스크가 받아 **대기 화면일 때만** 재시작해 적용한다.
+// 체험 도중에는 절대 끼어들지 않는다. 실패하면 조용히 현재 버전으로 계속 간다(무인 운영).
+// config.update.enabled:false 또는 --no-update 로 끈다. 포터블/zip 실행본에서는 동작하지 않는다(설치형 전용).
+function setupAutoUpdate() {
+  const U = Object.assign({ enabled: true, checkMinutes: 60, idleSeconds: 20 }, config.update || {});
+  if (!app.isPackaged || IS_SMOKE || NO_UPDATE || U.enabled === false) { log('INFO', '자동 업데이트 꺼짐', { packaged: app.isPackaged, smoke: IS_SMOKE, noUpdate: NO_UPDATE, enabled: U.enabled }); return; }
+  if (!IS_INSTALLED) { log('WARN', '자동 업데이트는 설치형(인스톨러)에서만 동작 — 포터블/zip 실행본은 수동 교체'); return; }
+  let autoUpdater;
+  try { ({ autoUpdater } = require('electron-updater')); } catch (e) { log('ERROR', 'electron-updater 로드 실패', { error: String(e) }); return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;      // 운영자가 종료 버튼으로 끄면 그때도 적용된다
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.logger = { info: (m) => log('INFO', '업데이트: ' + m), warn: (m) => log('WARN', '업데이트: ' + m), error: (m) => log('ERROR', '업데이트: ' + m), debug: () => {} };
+  let downloaded = null;
+  autoUpdater.on('update-available', (i) => log('INFO', '새 버전 발견 — 다운로드 시작', { version: i.version }));
+  autoUpdater.on('update-not-available', (i) => log('INFO', '최신 버전', { version: i.version }));
+  autoUpdater.on('error', (e) => log('ERROR', '업데이트 실패 — 현재 버전 유지', { error: String(e && e.message || e) }));
+  autoUpdater.on('update-downloaded', (i) => { downloaded = i.version; log('INFO', '업데이트 다운로드 완료 — 대기 화면에서 적용', { version: i.version }); });
+  const check = () => autoUpdater.checkForUpdates().catch((e) => log('WARN', '업데이트 확인 실패', { error: String(e && e.message || e) }));
+  setTimeout(check, 15000);                                            // 시작 직후는 카메라·프린터 초기화에 양보
+  setInterval(check, Math.max(5, U.checkMinutes) * 60 * 1000);
+  // 다운로드가 끝나 있고, 렌더러가 IDLE 로 충분히 머물러 있으면(관람객 없음) 재시작해 적용
+  setInterval(() => {
+    if (!downloaded) return;
+    const idleFor = (Date.now() - rendererStateAt) / 1000;
+    if (rendererState === 'IDLE' && idleFor >= U.idleSeconds) {
+      log('INFO', '업데이트 적용 — 재시작', { version: downloaded, idleSec: Math.round(idleFor) });
+      setTimeout(() => autoUpdater.quitAndInstall(true, true), 500);
+      downloaded = null;
+    }
+  }, 5000);
+}
 ipcMain.handle('preflight:get', () => preflight);
 ipcMain.handle('print:stats', () => readPrintStats());
 ipcMain.handle('preflight:rerun', () => runPreflight());

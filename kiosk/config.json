@@ -234,5 +234,10 @@
     "natureCount": 14,
     "natureUTo": 0.9,
     "natureSize": 0.85
+  },
+  "update": {
+    "enabled": true,
+    "checkMinutes": 60,
+    "idleSeconds": 20
   }
 }
