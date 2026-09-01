@@ -276,7 +276,9 @@ dalsu-ar-kiosk/
   테스트 → 인쇄 CLI 빌드 → 스모크 → 인스톨러/zip 빌드 → GitHub Release 업로드까지 한다. 태그와 package.json 버전이 다르면 실패한다.
 - **키오스크는 설치형(NSIS) 으로 설치**한다(`DalsuARKiosk-Setup-X.Y.Z.exe`, 사용자별 원클릭). 설치형만 자동 업데이트가 된다 —
   zip/포터블 실행본은 수동 교체. 설치형의 **데이터 폴더는 `문서\DalsuARKiosk`**(config.json / out / logs) — 업데이트 때 설치 폴더가 갈려도 보존된다.
-  시작 로그의 `data` 경로가 곧 현장에서 config.json 을 찾을 위치다.
+  시작 로그의 `data` 경로가 곧 현장에서 config.json 을 찾을 위치다. 설치 폴더는 `%LOCALAPPDATA%\Programs\dalsu-ar-kiosk`(패키지명 기준, 앱 이름 아님).
+- **2026-09-01 E2E 실측**: 설치본 0.7.0 → CI 릴리스 v0.7.1 발견 17초 → 다운로드 18초(146MB) → IDLE 24초 후 재시작 → 0.7.1 기동, `config.json` 보존.
+  CI(`release.yml`)도 첫 실행에 통과(테스트·인쇄 CLI 빌드·스모크 2종·업로드, 약 12분).
 - 업데이트 규칙(`main.js setupAutoUpdate`): 시작 15초 후 + `config.update.checkMinutes`(60)마다 확인, 백그라운드 다운로드,
   **렌더러가 IDLE 로 `idleSeconds`(20) 이상 머물 때만** 재시작해 적용. 체험 도중엔 절대 끼어들지 않는다. 실패는 로그만 남기고 현재 버전 유지.
   끄기: `config.update.enabled:false` 또는 `--no-update`.
