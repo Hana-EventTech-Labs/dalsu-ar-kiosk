@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "sheet": "dalsu-swim.png",
+  "sheetW": 3544,
+  "sheetH": 3096,
+  "frames": 24,
+  "cols": 4,
+  "rows": 6,
+  "cellW": 886,
+  "cellH": 516,
+  "body": {
+    "x": 0.094456,
+    "y": 0.105283,
+    "w": 0.729072,
+    "h": 0.891473
+  },
+  "bodyPx": {
+    "w": 646,
+    "h": 460
+  },
+  "bodyAspect": 1.40426,
+  "restIndex": 14,
+  "phase0": 0.70833,
+  "srcAspect": 1.40938,
+  "source": {
+    "frames": 96,
+    "period": 15,
+    "start": 20,
+    "seam": 2.1,
+    "neighbor": 2.471,
+    "restIoU": 0.895
+  },
+  "verified": {
+    "restIoUmin": 0.791,
+    "tailAmpPx": 34.1,
+    "shadingRatio": 1.023,
+    "seamRatio": 1.47,
+    "kickFrame": 5
+  }
+}

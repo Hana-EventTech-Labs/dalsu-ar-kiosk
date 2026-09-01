@@ -16,7 +16,9 @@ def largest_component(alpha):
     except Exception:
         return mask
 
-for path in sys.argv[1:]:
+# 다른 스크립트가 largest_component 만 가져다 쓸 수 있게 실행부를 가드 안에 둔다(동작은 그대로).
+def _main(paths):
+  for path in paths:
     im = Image.open(path).convert('RGBA')
     a = np.array(im)
     keep = largest_component(a[:, :, 3])
@@ -28,3 +30,7 @@ for path in sys.argv[1:]:
     out = Image.fromarray(a[y0:y1, x0:x1])
     out.save(path)
     print(f'{path}: {out.width}x{out.height}')
+
+
+if __name__ == '__main__':
+    _main(sys.argv[1:])

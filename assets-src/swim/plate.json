@@ -1,0 +1,21 @@
+{
+  "key": "#00B140",
+  "plate": [
+    1920,
+    1080
+  ],
+  "body": [
+    1034,
+    734
+  ],
+  "margin": [
+    443,
+    173
+  ],
+  "srcAspect": 1.40938,
+  "checks": {
+    "despillViolations": 0,
+    "maxSaturation": 0.4866,
+    "opaquePixels": 3200619
+  }
+}

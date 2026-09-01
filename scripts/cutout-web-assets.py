@@ -123,6 +123,23 @@ def main():
             lines.append(f"| `{out_name}` | {src_name} | {d.get('license','?')} | {d.get('artist','?')} | {d.get('page','?')} |")
         lines += ['', f'수집일: 2026-08-27 · 수집처: Wikimedia Commons',
                   '', '원본 파일은 `assets-src/web/` 에 그대로 보관합니다(재가공용).']
+        # 생성형 AI 파생 자산은 표가 아니라 산문으로 남긴다.
+        # 테스트(storyboard.test.js)가 "| `" 로 시작하는 모든 행에 Public domain|CC0 를 요구하므로
+        # 표 행으로 넣으면 게이트가 깨진다.
+        lines += ['', '## 생성형 AI 파생 자산', '',
+                  '`kiosk/assets/dalsu-swim.png` (헤엄 사이클 스프라이트 시트)는 외부 이미지가 아닙니다.',
+                  '발주처 제공 원본 `assets-src/dalsu-lying-2.ai.pdf` 에서 뽑은 `kiosk/assets/dalsu-float.png` 를',
+                  '시작·종료 프레임으로 고정하고 영상 생성 모델(Kling v3.0 pro, 2026-08-28)로 만든 파생물이며,',
+                  '제3자 이미지는 일절 포함되어 있지 않습니다.',
+                  '', '시작 플레이트·프롬프트·원본 클립·추출 프레임은 `assets-src/swim/` 에 보관합니다.',
+                  '재생성: `npm run assets:swim:plate` → 영상 생성 → `npx electron scripts/grab-frames.js --in <clip.mp4>` → `npm run assets:swim`',
+                  '', '`kiosk/assets/fish-1.png`, `fish-2.png`, `fish-3.png`, `fish-4.png`, `tree-1.png`, `tree-2.png`, `tree-3.png`, `tree-4.png`, `plant-1.png`, `plant-2.png`, `plant-3.png`',
+                  '(물가 나무·수풀)는 이미지 생성 모델(Nano Banana Pro, 2026-08-28)로 단색 크로마 배경 위에 그린 뒤',
+                  '`scripts/cutout-nature.py` 로 잘라낸 것입니다. 제3자 이미지를 입력으로 쓰지 않았습니다.',
+                  '원본 스트립은 `assets-src/nature/` 에 보관합니다.',
+                  '', '`kiosk/assets/water.png` (수면 텍스처)는 이미지 생성 모델(Nano Banana Pro, 2026-09-01)로 만든 위에서 본 맑은 물 사진풍 이미지를',
+                  '`scripts/make-water-tile.py` 로 좌우 타일러블하게 블렌딩하고 청록으로 재채색한 것입니다. 제3자 이미지를 입력으로 쓰지 않았습니다.',
+                  '원본은 `assets-src/water/water-raw.png` 에 보관합니다. 파일을 지우면 절차 생성 수면으로 자동 폴백합니다.']
         io.open(os.path.join(ROOT, 'docs', 'ASSET_CREDITS.md'), 'w', encoding='utf-8', newline='\n').write('\n'.join(lines) + '\n')
         print('  docs/ASSET_CREDITS.md 갱신')
 
