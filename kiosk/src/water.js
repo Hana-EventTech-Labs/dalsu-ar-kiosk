@@ -38,12 +38,20 @@ function tileNoise(nx, ny, rnd) {
 //     예전 sin(πu) 종 모양은 화면 중앙이 가장 굵고 아래에서 다시 가늘어져 "강"이 아니라 "리본"으로 읽혔다.
 //  ② 여울과 소: 실제 개울은 폭이 일정하지 않다. 좁아졌다 넓어졌다를 반복해야 자연스럽다.
 // min = 상단(가장 먼 곳) 폭 비율.
-function widthAt(u, min) {
+//  ③ 소(pool): 굽이에서 강이 넓어지는 웅덩이. pool = { u, w, k } (중심 진행도, 폭, 배율).
+//     세로로 흐르는 S자 한가운데에서 가로로 누운 달수(폭 = 높이×1.41)가 강폭을 넘는 문제를,
+//     달수를 돌리거나(공중제비로 보임) 줄이지(작아졌다 커짐) 않고 **강 쪽을 넓혀** 푼다. 실제 강도 굽이 바깥에 소가 생긴다.
+function widthAt(u, min, pool) {
   const m = Math.min(0.9, Math.max(0.05, min == null ? 0.35 : min));
   const c = Math.min(1, Math.max(0, u));
   const persp = m + (1 - m) * Math.pow(c, 0.78);
   const vary = 1 + Math.sin(c * Math.PI * 2.6 + 0.7) * 0.11;
-  return persp * vary;
+  let bump = 1;
+  for (const q of (Array.isArray(pool) ? pool : (pool ? [pool] : []))) {   // 소는 여러 개일 수 있다(S자엔 세로 굽이가 둘)
+    if (!(q && q.k > 0)) continue;
+    const d = (c - q.u) / (q.w || 0.07); bump += q.k * Math.exp(-d * d);
+  }
+  return persp * vary * bump;
 }
 
 // 둑의 불규칙함 — 좌우가 같은 폭으로 매끈하게 벌어지면 물길이 아니라 리본으로 보인다.
@@ -58,7 +66,7 @@ function bankWobble(t) {
 // uSpan: 이 폴리라인이 전체 물길의 몇 %인지(자라는 중이면 <1).
 // 이게 없으면 진행도 2% 짜리 짧은 물길도 '전체'로 취급돼 끝이 이미 최대 폭이 된다 →
 // 길이보다 폭이 큰 뚱뚱한 덩어리가 화면에 뜬다(실제로 그렇게 나갔다).
-function bandPolygon(pts, width, minTaper, endTaper, uSpan) {
+function bandPolygon(pts, width, minTaper, endTaper, uSpan, pool) {
   const n = pts.length;
   if (n < 2) return { left: [], right: [], half: [] };
   const left = [], right = [], half = [];
@@ -74,7 +82,7 @@ function bandPolygon(pts, width, minTaper, endTaper, uSpan) {
     // 머리(t=0)를 잠깐 좁힌다. 안 그러면 띠가 뚝 잘린 단면으로 시작해 '강'이 아니라 '잘린 리본'으로 읽힌다.
     // 4줄기가 모여드는 자리이기도 해서, 여기가 가늘어야 '합쳐져서 굵어진다'로 보인다.
     const st = t < 0.06 ? 0.42 + 0.58 * Math.pow(t / 0.06, 0.7) : 1;
-    const h = (width * widthAt(t, minTaper) * et * st) / 2;
+    const h = (width * widthAt(t, minTaper, pool) * et * st) / 2;
     const hl = h * (1 + bankWobble(t));          // 좌우 둑이 따로 들쭉날쭉하다
     const hr = h * (1 + bankWobble(t + 3.7));
     half.push(Math.max(hl, hr));
@@ -98,6 +106,7 @@ const WATER_PALETTE = Object.freeze({
   mid: [56, 152, 190],
   shallow: [140, 205, 230], // 둑 가까운 얕은 물
   foam: [255, 255, 255],
+  sheen: [226, 242, 250],   // 물마루가 올라가는 색. 순백이면 거품(급류)으로 읽힌다.
 });
 
 // 타일러블 수면 텍스처. W = 흐름 방향(반복), H = 띠 가로. tilePx 와 W 를 비슷하게 맞춰야 결이 뭉개지지 않는다.
@@ -123,14 +132,17 @@ function makeWaterTexture(W, H, seed, palette) {
       const u = x / W;
       const shear = u + v * 0.10;                    // 물결이 사선으로 눕는다
       let n = n1(shear, v) * 0.5 + n2(shear, v) * 0.32 + n3(shear, v) * 0.18;
-      n = clamp((n - 0.5) * 2.7 + 0.5);              // 대비 확장 — 밋밋한 회색 물이 되지 않게
-      const ridge = Math.pow(1 - Math.abs(n * 2 - 1), 3.2); // 능선형: 밝은 물결선이 도드라짐
+      // 대비를 2.7배로 늘리고 순백까지 올렸더니 **급류(흰 물살)** 로 보였다 — 시냇물이어야 한다.
+      // 대비를 낮추고, 물마루는 가늘게(지수 ↑) 약하게(계수 ↓), 흰색이 아니라 옅은 하늘빛으로 올린다.
+      n = clamp((n - 0.5) * 1.75 + 0.5);
+      const ridge = Math.pow(1 - Math.abs(n * 2 - 1), 4.6); // 지수가 클수록 물결선이 가늘어진다
       const swell = n3(shear * 1.7, v * 1.3);        // 큰 너울 — 밝고 어두운 면이 갈린다
-      let r = lerp(pal.mid[0], pal.deep[0], clamp(0.35 + (1 - swell) * 0.5));
-      let g = lerp(pal.mid[1], pal.deep[1], clamp(0.35 + (1 - swell) * 0.5));
-      let b = lerp(pal.mid[2], pal.deep[2], clamp(0.35 + (1 - swell) * 0.5));
-      const hi = ridge * 0.85 + Math.pow(nf(shear * 2.2, v * 2), 6) * 0.5; // 반짝이는 물마루
-      r = lerp(r, 255, clamp(hi)); g = lerp(g, 255, clamp(hi)); b = lerp(b, 255, clamp(hi));
+      let r = lerp(pal.mid[0], pal.deep[0], clamp(0.30 + (1 - swell) * 0.55));
+      let g = lerp(pal.mid[1], pal.deep[1], clamp(0.30 + (1 - swell) * 0.55));
+      let b = lerp(pal.mid[2], pal.deep[2], clamp(0.30 + (1 - swell) * 0.55));
+      const hi = ridge * 0.42 + Math.pow(nf(shear * 2.2, v * 2), 7) * 0.26; // 반짝이는 물마루(약하게)
+      // 순백(255)으로 올리면 거품이 된다. 옅은 하늘빛으로 올려야 '빛을 받은 수면'이 된다.
+      r = lerp(r, pal.sheen[0], clamp(hi)); g = lerp(g, pal.sheen[1], clamp(hi)); b = lerp(b, pal.sheen[2], clamp(hi));
       const i = (y * W + x) * 4;
       img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
     }
@@ -163,7 +175,7 @@ function drawFlowingRiver(ctx, pts, width, tex, scroll, opts) {
   // 호출부가 한 번만 구워 캔버스에 캐시해 두고, 매 프레임에는 water/glare 만 그린다.
   const only = o.only;
   const on = only ? (k) => only.indexOf(k) >= 0 : () => true;
-  const band = bandPolygon(pts, width, o.minTaper, o.endTaper, o.uSpan);
+  const band = bandPolygon(pts, width, o.minTaper, o.endTaper, o.uSpan, o.pool);
   const s = arcLengths(pts);
   const uScale = tex.width / tilePx;         // 화면 1px당 텍스처 px
 
@@ -258,7 +270,7 @@ function drawFlowingRiver(ctx, pts, width, tex, scroll, opts) {
     for (let k = 0; k < 3; k++) {
       const speed = 1 + k * 0.3, span = 200 + k * 90;
       const off = ((scroll * speed + k * 640) % (total + span * 2)) - span;
-      ctx.strokeStyle = `rgba(255,255,255,${0.13 - k * 0.03})`;
+      ctx.strokeStyle = `rgba(238,248,255,${0.075 - k * 0.018})`;
       ctx.lineWidth = width * (0.055 + k * 0.025);
       ctx.beginPath();
       let started = false;
@@ -281,9 +293,9 @@ function drawFlowingRiver(ctx, pts, width, tex, scroll, opts) {
     ctx.save();
     if (hiQ) {
       try { ctx.filter = `blur(${Math.max(1, width * 0.05).toFixed(1)}px)`; } catch (e) { /* noop */ }
-      ctx.strokeStyle = 'rgba(255,255,255,.62)'; ctx.lineWidth = width * 0.115; ctx.stroke(outline);
-      ctx.strokeStyle = 'rgba(255,255,255,.40)'; ctx.lineWidth = width * 0.045; ctx.stroke(outline);
-    } else softStroke(ctx, outline, '255,255,255', width * 0.10, 0.72, 3);
+      ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = width * 0.085; ctx.stroke(outline);
+      ctx.strokeStyle = 'rgba(255,255,255,.26)'; ctx.lineWidth = width * 0.032; ctx.stroke(outline);
+    } else softStroke(ctx, outline, '255,255,255', width * 0.075, 0.50, 3);
     ctx.restore();
   }
   ctx.restore();

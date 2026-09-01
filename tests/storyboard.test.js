@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { STATES, ORDER, createFlow } = require('../kiosk/src/flow');
-const { swimEase, swimPose } = require('../kiosk/src/motion');
+const { swimEase, swimArrive, swimPose, swimCamera } = require('../kiosk/src/motion');
 const { artBox, LAYERS } = require('../kiosk/src/compose');
 const river = require('../kiosk/src/river');
 const water = require('../kiosk/src/water');
@@ -41,10 +41,11 @@ test('시안 문구가 config에 모두 있고 4대 목표 문구는 기획 확�
     assert.ok(typeof cfg.screen[k] === 'string' && cfg.screen[k].length > 0, `screen.${k} 필요`);
   }
   const texts = Object.fromEntries(cfg.goals.map((g) => [g.key, g.text]));
-  assert.equal(texts.carbon, '2050년 탄소중립 달성');
-  assert.equal(texts.water, '2030년 용수 취수량 2021년 수준으로 절감');
-  assert.equal(texts.waste, '2030년 폐기물 재활용률 99.9% 달성');
-  assert.equal(texts.pollution, '2040년 대기·수질 오염물질 자연상태 수준으로 저감');
+  // 2026-09-01 클라이언트 콘텐츠 수정본 (FM)KIWW2026_AR포토부스_콘텐츠수정.pptx
+  assert.equal(texts.reduce, '물 사용량을\n줄이고');
+  assert.equal(texts.reuse, '물 재이용을\n늘리고');
+  assert.equal(texts.recycle, '정수 기술로\n재활용하여');
+  assert.equal(texts.return, '깨끗하게 정화된 물을\n자연에게 돌려줍니다');
 });
 
 test('헤엄 이징: 항상 전진하고 등속이 아니다(스트로크가 있다)', () => {
@@ -93,6 +94,103 @@ test('헤엄 위상이 전진 위상과 맞물린다 — 스트로크마다 한 
   for (let i = 1; i < 200; i++) { const p = i / 200, v = speedAt(p); if (v > best) { best = v; fastest = p; } }
   assert.ok(swimPose(fastest * STROKES * Math.PI * 2).push > 0.85,
     '가장 빨리 나아가는 순간에 몸도 물을 차고 있어야 한다 (따로 돌면 허우적거려 보인다)');
+});
+
+test('헤엄 진행은 매개변수가 아니라 길이 기준이다 — 굽이에서 제자리걸음이 되면 안 된다', () => {
+  const A = 1080 / 1920, N = 2000;
+  const cum = [0]; let prev = river.pointAt(0);
+  for (let i = 1; i <= N; i++) {
+    const q = river.pointAt((i / N) * 0.5);
+    cum.push(cum[i - 1] + Math.hypot((q[0] - prev[0]) * A, q[1] - prev[1]));
+    prev = q;
+  }
+  const total = cum[N];
+  const distAt = (u) => cum[Math.max(0, Math.min(N, Math.round((u / 0.5) * N)))];
+  for (let i = 0; i <= 10; i++) {
+    const s = i / 10;
+    assert.ok(Math.abs(distAt(river.uAtArc(s, 0, 0.5)) / total - s) < 0.01,
+      `길이 진행도 ${s} 에서 실제로 간 거리 비율이 어긋난다`);
+  }
+  assert.equal(+river.uAtArc(1, 0, 0.5).toFixed(6), 0.5, '헤엄 끝은 물길 중앙(u=0.5)');
+
+  // 속도의 빠르고 느림은 **스트로크만** 만들어야 한다. swimEase 의 속도 폭은 1±0.6 이라 최대 4배.
+  // 경로 매개변수를 그대로 쓰면 여기에 굽이의 왜곡(측정 2.5배)이 곱해져 10배까지 벌어졌다.
+  // 누적표를 되짚으면 정의상 항등이라 아무것도 검증하지 못한다 — 실제 좌표 사이 거리를 잰다.
+  const STROKES = 5, F = 300;
+  let vmin = Infinity, vmax = 0;
+  let pp = river.pointAt(river.uAtArc(swimEase(0, STROKES), 0, 0.5));
+  for (let i = 1; i <= F; i++) {
+    const q = river.pointAt(river.uAtArc(swimEase(i / F, STROKES), 0, 0.5));
+    const v = Math.hypot((q[0] - pp[0]) * A, q[1] - pp[1]); pp = q;
+    if (v < vmin) vmin = v;
+    if (v > vmax) vmax = v;
+  }
+  assert.ok(vmax / vmin < 4.6, `속도 편차가 스트로크가 만드는 4배를 넘으면 안 된다 (실제 ${(vmax / vmin).toFixed(1)}배)`);
+});
+
+test('헤엄 카메라는 진행도만의 순수 함수다 — 시간 기반이면 스모크에서 줌이 안 걸린다', () => {
+  const cam = cfg.swim && cfg.swim.camera;
+  assert.ok(cam, 'config.swim.camera 가 있어야 현장에서 켜고 끌 수 있다');
+  assert.ok(typeof cam.enabled === 'boolean', 'enabled 는 boolean');
+  // 현재는 꺼 둔다(2026-08-29): 확대하면 주변 경관이 안 보인다는 판단. 커브 자체는 계속 검증한다.
+  assert.ok(cam.zoom >= 1.0 && cam.zoom <= 3.0, `줌 배율이 상식 범위를 벗어남 (${cam.zoom})`);
+  assert.ok(cam.pushInFrom >= 0 && cam.pushInFrom < cam.pushInTo && cam.pushInTo <= 1,
+    '돌리 구간은 0 ≤ from < to ≤ 1 이어야 한다');
+
+  const curve = Object.assign({}, cam, { enabled: true });   // 커브 자체는 켜진 상태로 검증한다
+  // 같은 p 는 항상 같은 줌 (호출 시각과 무관)
+  assert.equal(swimCamera(0.42, curve).zoom, swimCamera(0.42, curve).zoom);
+  // 양 끝값
+  assert.equal(swimCamera(0, curve).zoom, 1, '시작은 앞 컷과 같은 시점이어야 이음매가 안 튄다');
+  assert.equal(+swimCamera(cam.pushInFrom, curve).zoom.toFixed(6), 1);
+  assert.equal(+swimCamera(cam.pushInTo, curve).zoom.toFixed(6), +cam.zoom.toFixed(6));
+  assert.equal(+swimCamera(1, curve).zoom.toFixed(6), +cam.zoom.toFixed(6), '도착 순간은 클로즈업이어야 한다');
+  assert.equal(swimCamera(0.5, { enabled: false, zoom: 2.2 }).zoom, 1, 'enabled:false 는 예전 시점 그대로');
+
+  // 돌리 구간은 단조증가하고, 한 프레임에 확 튀지 않는다
+  let prev = -Infinity, maxStep = 0;
+  for (let i = 0; i <= 600; i++) {
+    const z = swimCamera(i / 600, curve).zoom;
+    assert.ok(z >= prev - 1e-9, '줌이 뒤로 가면 카메라가 덜컹거린다');
+    if (i) maxStep = Math.max(maxStep, z - prev);
+    prev = z;
+  }
+  // 6초 × 60fps = 360프레임. 600분할 한 칸은 그보다 촘촘하므로 여유 있게 잡는다.
+  assert.ok(maxStep < 0.03, `프레임당 줌 변화가 너무 크다 (${maxStep.toFixed(4)})`);
+});
+
+test('자연 슬롯은 달수가 실제로 가는 구간에만 놓인다 — 안 그러면 절반이 화면 밖에서 핀다', () => {
+  // 자연 밀도는 카메라와 무관한 장면 설정이다 — 카메라를 꺼도 경관은 유지돼야 한다.
+  const sc = cfg.scene;
+  assert.ok(sc.natureCount >= 8 && sc.natureUTo > 0 && sc.natureUTo <= 1, 'scene 자연 설정이 비었다');
+  const slots = river.natureSlots(sc.natureCount, cfg.river.natureOffset, 1080 / 1920, 0, sc.natureUTo);
+  assert.equal(slots.length, sc.natureCount);
+  for (const s of slots) assert.ok(s.u <= sc.natureUTo + 1e-9, `슬롯 u=${s.u} 가 ${sc.natureUTo} 를 넘는다`);
+  // 달수는 config.swim.arriveU 까지 간다. 그 안에 대부분이 들어와야 '지나간 자리에 생명이 번진다'가 보인다.
+  const arrive = (cfg.swim && cfg.swim.arriveU) || 0.5;
+  assert.ok(sc.natureUTo <= arrive + 0.1, `자연이 달수가 가지 않는 하류(${sc.natureUTo} > ${arrive})까지 퍼진다`);
+  const within = slots.filter((s) => s.u <= arrive).length;
+  assert.ok(within >= sc.natureCount - 2, `달수 경로 안 슬롯이 ${within}/${sc.natureCount} 뿐`);
+
+  // 기존 호출 형태(uTo 없음)는 예전과 완전히 동일해야 한다
+  const before = river.natureSlots(8, cfg.river.natureOffset, 1080 / 1920, 0);
+  const after = river.natureSlots(8, cfg.river.natureOffset, 1080 / 1920, 0, undefined);
+  assert.deepEqual(before, after, 'uTo 를 안 주면 예전 배치 그대로여야 한다');
+});
+
+test('도착 감속 — 뒤로 가지 않고, 끝에서 속도가 0 으로 수렴한다', () => {
+  let prev = 0;
+  for (let i = 1; i <= 1000; i++) {
+    const v = swimArrive(i / 1000, 5);
+    assert.ok(v >= prev - 1e-9, `p=${i / 1000} 에서 뒤로 간다`);
+    prev = v;
+  }
+  assert.equal(+swimArrive(1, 5).toFixed(6), 1);
+  const vEnd = (swimArrive(1, 5) - swimArrive(0.995, 5)) / 0.005;
+  const vMid = (swimArrive(0.505, 5) - swimArrive(0.5, 5)) / 0.005;
+  assert.ok(vEnd < vMid * 0.08, `끝 속도가 너무 크다 (${vEnd.toFixed(3)} vs 중간 ${vMid.toFixed(3)}) — 가다가 뚝 멈춘다`);
+  // 꼬리 구간 전에는 swimEase 와 완전히 같다 (위상 규약 유지)
+  for (const p of [0.1, 0.3, 0.5, 0.8]) assert.equal(swimArrive(p, 5), swimEase(p, 5));
 });
 
 test('카드 AR 영역: 인물 얼굴이 있는 상단은 비우고 하단에만 배치', () => {
@@ -383,6 +481,50 @@ test('자연 회복 요소가 물 위가 아니라 둑 바깥에 놓인다', () 
   }
 });
 
+test('카메라는 카드 합성과 화면 지우기를 건드리지 않는다', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+
+  // 카드는 별도 cardCtx 라 구조적으로 영향을 받을 수 없지만, 실수로 끌어들이면 인쇄물이 잘린다.
+  const cs = src.indexOf('function composeCard');
+  const ce = src.indexOf('\n  function ', cs + 10);
+  assert.ok(cs > 0 && ce > cs, 'composeCard 블록을 찾지 못함');
+  const card = src.slice(cs, ce);
+  assert.ok(!/camApply|anim\.cam/.test(card), '카드 합성에 카메라가 끼어들었다 — 인쇄물이 확대되어 잘린다');
+
+  // 앞 프레임의 카메라 변환이 남은 채로 지우면 화면 가장자리가 안 지워진다.
+  const ci = src.indexOf('fxCtx.clearRect');
+  assert.ok(ci > 0, 'clearRect 를 찾지 못함');
+  assert.ok(src.slice(Math.max(0, ci - 260), ci).includes('camReset(fxCtx)'),
+    'clearRect 직전에 camReset 이 없다 — 확대된 상태로 지우면 가장자리에 잔상이 남는다');
+
+  // 정적 캐시는 **고정 배율**로 한 번만 굽는다. 라이브 줌을 넘기면 매 프레임 재굽기(프레임당 100ms)가 된다.
+  assert.ok(/const SHELL_Z\s*=/.test(src), 'SHELL_Z 고정 배율 상수가 없다');
+  const rs = src.indexOf('function riverShell');
+  const re = src.indexOf('\n  }', rs);
+  assert.ok(/const z = SHELL_Z;/.test(src.slice(rs, re)),
+    'riverShell 이 고정 배율(SHELL_Z)이 아닌 값을 쓰고 있다 — 캐시가 매 프레임 다시 구워진다');
+});
+
+test('헤엄 스프라이트 시트가 있으면 메타와 서로 맞는다 (없으면 검사 대상 아님)', () => {
+  const dir = path.join(__dirname, '..', 'kiosk', 'assets');
+  const hasPng = fs.existsSync(path.join(dir, 'dalsu-swim.png'));
+  const hasJson = fs.existsSync(path.join(dir, 'dalsu-swim.json'));
+  if (!hasPng && !hasJson) return;               // 시트를 안 쓰는 환경 — 정지 이미지로 도는 게 정상이다
+  assert.ok(hasPng && hasJson, '시트와 메타는 항상 짝이어야 한다 (한쪽만 있으면 런타임이 폴백한다)');
+  const m = JSON.parse(fs.readFileSync(path.join(dir, 'dalsu-swim.json'), 'utf8'));
+  assert.equal(m.cols * m.cellW, m.sheetW, '열 × 셀너비가 시트 너비와 달라 프레임이 어긋난다');
+  assert.equal(m.rows * m.cellH, m.sheetH, '행 × 셀높이가 시트 높이와 달라 프레임이 어긋난다');
+  assert.ok(m.frames > 0 && m.frames <= m.cols * m.rows, `프레임 수 ${m.frames} 가 격자를 벗어난다`);
+  assert.ok(m.restIndex >= 0 && m.restIndex < m.frames);
+  assert.ok(m.phase0 >= 0 && m.phase0 < 1, 'phase0 는 0~1 (검증 스크립트가 측정해 넣는다)');
+  assert.ok(m.body.x + m.body.w <= 1 && m.body.y + m.body.h <= 1, '몸 상자는 셀 안에 있어야 한다');
+  // 카드 배치는 dalsu-float.png(2403x1705)를 기준으로 계산된다. 시트의 몸 종횡비가 그와 어긋나면
+  // 화면의 달수만 눌리거나 늘어난다.
+  assert.ok(Math.abs(m.srcAspect - 2403 / 1705) < 0.02, '원본 종횡비 기록이 실제 자산과 다르다');
+  assert.ok(Math.abs(m.bodyAspect - m.srcAspect) < 0.05,
+    `시트 몸 종횡비 ${m.bodyAspect} 가 원본 ${m.srcAspect} 와 어긋난다 — 캐릭터가 눌려 보인다`);
+});
+
 test('성능 저하 단계는 해상도를 낮추지 않는다 (곡선 구간 수만 줄인다)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
   const block = src.slice(src.indexOf('const PERF_STEPS'), src.indexOf('const PERF ='));
@@ -445,6 +587,18 @@ test('인쇄 타임아웃이 실측 인쇄 시간(60~90초)보다 충분히 길�
   const t = cfg.printer.timeoutMs;
   assert.ok(t >= 150000, `timeoutMs ${t}ms — 실측 최대 90초와 너무 가깝다 (150000 이상 권장)`);
   assert.ok(t <= 300000, `timeoutMs ${t}ms — 너무 길면 프린터가 죽었을 때 화면이 오래 멈춘다`);
+});
+
+// 현장 config.json 은 업데이트가 덮어쓰지 않는다. 그래서 예전 값(90초)이 남아 있으면
+// 정상 인쇄(60~90초)가 타임아웃으로 잘려 '카드는 나오는데 화면은 직원 호출'이 된다 — 실제로 그랬다.
+// 설정이 짧아도 코드가 최소값으로 끌어올려야 한다.
+test('인쇄 타임아웃은 설정이 짧아도 코드가 최소값으로 올린다', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'main.js'), 'utf8');
+  const m = /PRINT_TIMEOUT_FLOOR_MS\s*=\s*(\d+)/.exec(src);
+  assert.ok(m, 'main.js 에 타임아웃 하한이 없다');
+  assert.ok(+m[1] >= 150000, `하한 ${m[1]}ms — 실측 인쇄 90초와 너무 가깝다`);
+  assert.match(src, /Math\.max\(PRINT_TIMEOUT_FLOOR_MS/, '하한이 실제로 적용되지 않는다');
+  assert.doesNotMatch(src, /timeoutMs\s*\|\|\s*90000/, '설정값을 그대로 쓰는 경로가 남아 있다');
 });
 
 // 타임아웃 시점에는 카드가 프린터 안에 있을 수 있다. 그대로 재시도하면 잼이 난다.

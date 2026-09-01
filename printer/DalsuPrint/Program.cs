@@ -29,6 +29,7 @@ namespace DalsuPrint
             bool dryRun = false, list = false, portrait = false;
             // comm = 드라이버(스풀러) 모드 + dwPrtSide 패치 — 라테일에서 실장비 양면 출력 확인된 경로(기본)
             // dcl  = 직접통신 SBS 시퀀스 — 라테일 기록상 "이 환경에서 IO 실패". 폴백용.
+            int backRotate = 0;   // 뒷면 회전(도) — 플리퍼 축에 따라 현장에서 맞춘다
             string mode = "comm";
             for (int i = 0; i < args.Length; i++)
             {
@@ -41,6 +42,7 @@ namespace DalsuPrint
                     case "--portrait": portrait = true; break;
                     case "--landscape": portrait = false; break;
                     case "--mode": mode = (Next(args, ref i) ?? "comm").ToLowerInvariant(); break;
+                    case "--back-rotate": backRotate = int.TryParse(Next(args, ref i), out var br) ? ((br % 360) + 360) % 360 : 0; break;
                     case "--list": list = true; break;
                     case "-h": case "--help": Usage(); return 0;
                     default: Err($"알 수 없는 인자: {args[i]}"); Usage(); return 1;
@@ -108,7 +110,7 @@ namespace DalsuPrint
             // ── comm 경로 (기본) ───────────────────────────────────────────────
             // 드라이버(스풀러) 모드로 열고, 프린터 설정의 dwPrtSide 를 양면(2)으로 강제한 뒤
             // 앞/뒤 두 면을 그리고 한 번 Print. 라테일 팝업스토어에서 실장비 양면 출력이 확인된 시퀀스.
-            if (mode == "comm") return PrintViaComm(sdk, target, sel, front, back);
+            if (mode == "comm") return PrintViaComm(sdk, target, sel, front, back, backRotate);
 
             // ── dcl 경로 (폴백) ────────────────────────────────────────────────
             // 직접통신 SBS 시퀀스. 라테일 기록상 드라이버 설치 환경에서는 IO 실패했다.
@@ -146,8 +148,8 @@ namespace DalsuPrint
                 Log($"앞면 로드: {Path.GetFileName(front)}");
                 if (duplex)
                 {
-                    if ((res = Draw(sdk, SmartComm2Wrapper.PAGE_BACK, back)) != SmartComm2Wrapper.SM_SUCCESS) { Err($"뒷면 그리기 실패 (0x{res:X8})"); Recover(sdk); return 4; }
-                    Log($"뒷면 로드: {Path.GetFileName(back)}");
+                    if ((res = Draw(sdk, SmartComm2Wrapper.PAGE_BACK, back, backRotate)) != SmartComm2Wrapper.SM_SUCCESS) { Err($"뒷면 그리기 실패 (0x{res:X8})"); Recover(sdk); return 4; }
+                    Log($"뒷면 로드: {Path.GetFileName(back)}" + (backRotate != 0 ? $" (회전 {backRotate}도)" : ""));
                 }
 
                 sdk.GetRibbonInfo(out int rtype, out int rmax, out int rremain, out _);
@@ -178,7 +180,7 @@ namespace DalsuPrint
         }
 
         // comm 경로 — 드라이버 모드 + dwPrtSide 강제. 앞/뒤를 그린 뒤 한 번에 인쇄한다.
-        private static int PrintViaComm(SmartComm2Wrapper sdk, SmartComm2Wrapper.SMART_PRINTER_ITEM target, string sel, string front, string back)
+        private static int PrintViaComm(SmartComm2Wrapper sdk, SmartComm2Wrapper.SMART_PRINTER_ITEM target, string sel, string front, string back, int backRotate)
         {
             int res = sdk.OpenDevice(sel, true);
             if (res != SmartComm2Wrapper.SM_SUCCESS && !string.IsNullOrEmpty(target.id)) res = sdk.OpenDevice(target.id, false);
@@ -209,9 +211,9 @@ namespace DalsuPrint
                 Log($"앞면 로드: {Path.GetFileName(front)}");
                 if (duplex)
                 {
-                    if ((res = Draw(sdk, SmartComm2Wrapper.PAGE_BACK, back)) != SmartComm2Wrapper.SM_SUCCESS)
+                    if ((res = Draw(sdk, SmartComm2Wrapper.PAGE_BACK, back, backRotate)) != SmartComm2Wrapper.SM_SUCCESS)
                     { Err($"뒷면 그리기 실패 (0x{res:X8})"); return 4; }
-                    Log($"뒷면 로드: {Path.GetFileName(back)}");
+                    Log($"뒷면 로드: {Path.GetFileName(back)}" + (backRotate != 0 ? $" (회전 {backRotate}도)" : ""));
                 }
 
                 sdk.GetRibbonInfo(out int rtype, out int rmax, out int rremain, out _);
@@ -230,23 +232,44 @@ namespace DalsuPrint
 
         // 어떤 포맷/크기든 카드 규격(가로 1012×636 / 세로 636×1012) 24bpp로 리사이즈 후 HBITMAP 전달
         // (SDK 파일 디코더 우회 — 빈 카드 문제 회피)
-        private static int Draw(SmartComm2Wrapper sdk, byte page, string path)
+        private static int Draw(SmartComm2Wrapper sdk, byte page, string path, int rotate = 0)
         {
-            using var canvas = ToCardBitmap(path);
+            using var canvas = ToCardBitmap(path, rotate);
             IntPtr hbmp = canvas.GetHbitmap();
             try { return sdk.DrawBitmap(page, SmartComm2Wrapper.PANEL_COLOR, 0, 0, CARD_W, CARD_H, hbmp, out _); }
             finally { DeleteObject(hbmp); }
         }
 
-        private static Bitmap ToCardBitmap(string path)
+        // rotate: 뒷면 전용. 양면 프린터는 플리퍼가 카드를 뒤집는 축에 따라 뒷면 방향이 달라진다.
+        //   0   그대로 (기본)
+        //   180 위아래 뒤집힘 보정 — 플리퍼가 긴 변을 축으로 뒤집을 때 필요하다
+        //   90/270 세로 디자인을 가로 패널에 올릴 때. 비율이 달라지므로 '덮고 잘라내기'로 맞춘다
+        private static Bitmap ToCardBitmap(string path, int rotate = 0)
         {
-            using var src = new Bitmap(path);
+            using var src0 = new Bitmap(path);
+            using var src = RotateCopy(src0, rotate);
             var canvas = new Bitmap(CARD_W, CARD_H, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
             using var g = Graphics.FromImage(canvas);
             g.Clear(Color.White);
             g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(src, 0, 0, CARD_W, CARD_H);
+            if (rotate == 90 || rotate == 270)
+            {
+                // 비율이 뒤바뀐 경우엔 늘려 찌그러뜨리지 않고, 카드를 덮도록 키운 뒤 가운데를 쓴다
+                double s = Math.Max((double)CARD_W / src.Width, (double)CARD_H / src.Height);
+                int w = (int)Math.Ceiling(src.Width * s), h = (int)Math.Ceiling(src.Height * s);
+                g.DrawImage(src, (CARD_W - w) / 2, (CARD_H - h) / 2, w, h);
+            }
+            else g.DrawImage(src, 0, 0, CARD_W, CARD_H);
             return canvas;
+        }
+
+        private static Bitmap RotateCopy(Bitmap src, int deg)
+        {
+            var b = new Bitmap(src);
+            if (deg == 90) b.RotateFlip(RotateFlipType.Rotate90FlipNone);
+            else if (deg == 180) b.RotateFlip(RotateFlipType.Rotate180FlipNone);
+            else if (deg == 270) b.RotateFlip(RotateFlipType.Rotate270FlipNone);
+            return b;
         }
 
         private static void Recover(SmartComm2Wrapper sdk)

@@ -3,9 +3,9 @@
 :root { --sky: #bfe0f2; --paper: #eef6fb; --water: #2f92bd; --leaf: #5aa85e; --leaf2: #7cbf72;
   --ink: #14212b; --ink2: #2c3d4a; --accent: #0a5c85; --deep: #0b4a70; --sun: #f5c93f; }
 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-drag: none; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0e2833; font-family: "Jua", "Malgun Gothic", sans-serif; color: var(--ink); cursor: none; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0e2833; font-family: "Samsung SS Body KR", "Malgun Gothic", sans-serif; color: var(--ink); cursor: none; }
 body { display: flex; align-items: center; justify-content: center; }
-.jua, h1, .caption, .bubble .label, #count-num { font-family: "Jua", "Malgun Gothic", sans-serif; }
+.jua, h1, .caption, .bubble .label, #count-num { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; }
 /* 번들 서체는 400 웨이트뿐이라, 굵게 보이려면 합성 볼드(700) + 글자 외곽 보강을 함께 쓴다 */
 h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-title, #idle p, #guide-text, #preview-text { font-weight: 700; }
 /* 키오스크는 1080×1920 세로 전용. 어떤 모니터에서 띄워도 같은 화면이 되도록 9:16 무대를 만들고,
@@ -19,8 +19,24 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #stage[data-state="COUNTDOWN"] #bg, #stage[data-state="CAPTURE"] #bg { opacity: 0; }
 
 /* 카메라: 기획 흐름도대로 4단계(카운트다운·촬영)에서만 노출 */
-#cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .6s; }
+/* 촬영 미리보기는 **인쇄될 프레이밍과 같아야** 한다 — 보이는 대로 찍혀야 하므로
+   카드 사진 띠와 같은 종횡비의 상단 띠로 둔다(--cam-h 는 renderer 가 계산해 넣는다). */
+#cam { position: absolute; top: 0; left: 0; width: 100%; height: var(--cam-h, 100%); object-fit: cover; opacity: 0; transition: opacity .6s; }
 #cam.mirror { transform: scaleX(-1); }
+/* 뷰파인더 모드 — 32인치 세로 화면에 미리보기를 꽉 채우면 얼굴이 압도적으로 크고, 무엇이 찍히는지도 감이 없다.
+   포토카드 비율(664:1040)의 틀을 화면 폭의 일부로 띄우고 그 위쪽에 사진 띠를 앉힌다. 인쇄 구도는 그대로다. */
+#viewfinder { position: absolute; display: none; left: 50%; top: var(--vf-top, 12%); width: var(--vf-w, 70%); height: var(--vf-h, 60%);
+  transform: translateX(-50%); border-radius: 2.4cqw; background: #eef5f9; box-shadow: 0 2cqh 6cqh rgba(11,58,88,.35), 0 0 0 .7cqw #fff;
+  overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .6s; }
+#viewfinder .vf-below { position: absolute; left: 0; right: 0; bottom: 0; top: var(--cam-h, 60%);
+  background: #dbeaf3; }   /* 실제 채움은 vf-overlay(카드 합성)가 한다 */
+#stage.vf #cam { left: 50%; width: var(--vf-w, 70%); top: var(--vf-top, 12%); height: var(--vf-cam, 40%);
+  border-radius: 2.4cqw 2.4cqw 0 0; transform: translateX(-50%); }
+#stage.vf #cam.mirror { transform: translateX(-50%) scaleX(-1); }
+#vf-overlay { position: absolute; display: none; left: 50%; top: var(--vf-top, 12%); width: var(--vf-w, 70%); height: var(--vf-h, 60%);
+  transform: translateX(-50%); border-radius: 2.4cqw; pointer-events: none; opacity: 0; transition: opacity .6s; }
+#stage.vf[data-state="COUNTDOWN"] #viewfinder, #stage.vf[data-state="CAPTURE"] #viewfinder,
+#stage.vf[data-state="COUNTDOWN"] #vf-overlay, #stage.vf[data-state="CAPTURE"] #vf-overlay { display: block; opacity: 1; }
 #stage[data-state="COUNTDOWN"] #cam, #stage[data-state="CAPTURE"] #cam { opacity: 1; }
 #fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
@@ -40,7 +56,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #head { position: absolute; top: 6.5cqh; left: 0; right: 0; text-align: center; z-index: 3; pointer-events: none;
   opacity: 0; transition: opacity .5s; }
 #stage[data-state="IDLE"] #head, #stage[data-state="GUIDE"] #head { opacity: 1; }
-#head-title { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 5.8cqw; line-height: 1.24; color: var(--deep);
+#head-title { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 5.8cqw; line-height: 1.24; color: var(--deep);
   white-space: pre-line; text-shadow: 0 .35cqh 0 #fff, 0 .9cqh 1.8cqh rgba(11,74,112,.18); -webkit-text-stroke: .12cqw var(--deep); }
 #head-sub { margin-top: 1.8cqh; font-size: 2.7cqw; line-height: 1.5; color: #1d4a63; white-space: pre-line; font-weight: 700; text-shadow: 0 .2cqh 0 rgba(255,255,255,.7); }
 
@@ -62,6 +78,16 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
   border: .45cqw solid #ffffff; box-shadow: 0 1.2cqh 3.2cqh rgba(11,58,88,.28); white-space: pre-line; line-height: 1.35; }
 .caption.big { font-size: 4.3cqw; }
 #story .caption { position: absolute; top: 2.5cqh; }
+/* 목표 성과 한 줄 — 캡션 바로 아래. DOM 이라 카메라 줌과 무관하게 항상 또렷하다. */
+#story-goal { position: absolute; top: 13.2cqh; left: 50%; transform: translateX(-50%) translateY(1cqh);
+  display: flex; align-items: center; gap: 1.6cqw; max-width: 84cqw;
+  padding: 1.5cqh 3.4cqw; border-radius: 99cqw; background: rgba(255,255,255,.94);
+  box-shadow: 0 .8cqh 2.4cqh rgba(11,58,88,.20);
+  font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 3.1cqw; font-weight: 700; color: #063a5c;
+  opacity: 0; transition: opacity .45s, transform .45s; pointer-events: none; white-space: nowrap; }
+#story-goal.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+#story-goal i { width: 2.4cqw; height: 2.4cqw; border-radius: 50%; flex: none;
+  box-shadow: 0 0 0 .5cqw rgba(255,255,255,.85); }
 
 /* 물방울 — 시안 1~4컷: 가로 1열 4개, 눈물방울 모양, 안에 아이콘 + 라벨 */
 #bubbles { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .5s; }
@@ -73,14 +99,14 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 .bubble .inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding-top: 16%; gap: .8cqh; }
 .bubble svg.icon { width: 8.4cqw; height: 8.4cqw; }
-.bubble .label { font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
+.bubble .label { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
   text-shadow: 0 .22cqh .5cqh rgba(8,58,86,.55), 0 0 .35cqh rgba(8,58,86,.4); }
 .bubble:active { transform: scale(.95); }
 .bubble.popped .drop, .bubble.popped .inner { animation: dropPop .45s cubic-bezier(.2,.9,.3,1.3) forwards; }
 @keyframes dropPop { 0% { transform: scale(1); opacity: 1 } 40% { transform: scale(1.18) } 100% { transform: scale(1.5); opacity: 0 } }
 /* 터진 자리에 목표 문구가 남는다 (시안 3~4컷) */
 .bubble .done { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .4cqw; font-family: "Jua", "Malgun Gothic", sans-serif; font-size: 2.95cqw; line-height: 1.3; color: #063a5c; text-align: center;
+  padding: 0 .4cqw; font-family: "Samsung SS Body KR", "Malgun Gothic", sans-serif; font-size: 2.95cqw; line-height: 1.3; color: #063a5c; text-align: center;
   -webkit-text-stroke: .1cqw #063a5c;
   text-shadow: 0 0 .8cqh #fff, 0 0 1.6cqh rgba(255,255,255,.95), 0 .3cqh 0 rgba(255,255,255,.9); }
 .bubble.popped .done { display: flex; animation: doneIn .5s .3s cubic-bezier(.2,.9,.3,1.3) both; }
@@ -92,7 +118,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
   filter: drop-shadow(0 .8cqh 1.2cqh rgba(60,90,110,.28)); }
 #guide-hand svg { width: 100%; height: auto; display: block; }
 @keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6cqw,-1.4cqh) } }
-#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; bottom: 17cqh; z-index: 3; font-family: "Jua", "Malgun Gothic", sans-serif;
+#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; bottom: 17cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;
   font-size: 3.5cqw; line-height: 1.32; color: var(--deep); white-space: pre-line; text-align: center;
   text-shadow: 0 .28cqh 0 #fff, 0 .6cqh 1.4cqh rgba(11,74,112,.2); }
 
@@ -153,7 +179,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #done { display: none !important; }  /* 완료 안내는 미리보기 화면 위에서 이어서 보여준다 */
 #error { background: rgba(47,58,68,.6); }
 #error .caption.big { background: #fff; color: #9c2e22; font-weight: 700; }
-#error button { margin-top: 4cqh; font-family: "Jua", sans-serif; font-weight: 700; font-size: 3.2cqw; padding: 2.2cqh 5.4cqw;
+#error button { margin-top: 4cqh; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-weight: 700; font-size: 3.2cqw; padding: 2.2cqh 5.4cqw;
   border: .4cqw solid var(--accent); border-radius: 2cqw; background: #fff; color: var(--accent); }
 /* 운영자 종료 히트존 — 완전 투명, 우상단. 어떤 화면에서도 눌리도록 최상단 z-index */
 #exit-hit { position: absolute; top: 0; right: 0; width: 14cqw; height: 9cqh; z-index: 999; background: transparent; opacity: 0; }
@@ -164,3 +190,9 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 #flash.on { animation: flash .35s ease-out; }
 @keyframes flash { 0% { opacity: 1 } 100% { opacity: 0 } }
+
+/* 뷰파인더(카드 꽉 채움) 모드의 카운트다운 — 숫자를 가운데 두면 얼굴을 가린다. 우상단 구석으로, 작게.
+   #countdown 의 어두운 그라데이션도 끈다 — 라이브 영상과 인쇄 미리보기를 잿빛으로 덮어 실제 인쇄색과 달라 보인다. */
+#stage.vf #countdown { background: none; justify-content: flex-start; }
+#stage.vf #count-num { position: absolute; top: 2.2cqh; right: 4.5cqw; left: auto; transform: none;
+  width: 17cqw; height: 17cqw; line-height: 17cqw; font-size: 11cqw; }
