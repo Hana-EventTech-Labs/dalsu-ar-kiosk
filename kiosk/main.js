@@ -17,9 +17,12 @@ const DATA_ROOT = app.isPackaged
   : path.resolve(ROOT, '..');
 if (app.isPackaged) { try { fs.mkdirSync(DATA_ROOT, { recursive: true }); } catch (e) { /* 아래 config 복사에서 다시 시도 */ } }
 const BUNDLED_CONFIG = path.join(ROOT, 'config.json');
-// 배포본은 exe 옆 config.json을 쓴다(없으면 번들본을 1회 복사) — 현장에서 메모장으로 수정 가능
+// 배포본: 콘텐츠(메뉴·문구·색·연출)는 **앱에 든 config.json 이 기준**이고, 현장 파일(DATA_ROOT/config.json)은
+// 프린터·카메라 같은 **현장값 오버레이만** 담는다(src/siteconfig.js). 예전처럼 전체를 복사해 두면 자동 업데이트로
+// 콘텐츠가 내려가지 않는다 — v0.7.4 배포에서 실제로 그랬다(앱은 올라갔는데 화면은 옛 4개 메뉴). 예전 파일은 첫 기동 때 자동 변환한다.
 const CONFIG_PATH = app.isPackaged ? path.join(DATA_ROOT, 'config.json') : BUNDLED_CONFIG;
-if (app.isPackaged && !fs.existsSync(CONFIG_PATH)) { try { fs.copyFileSync(BUNDLED_CONFIG, CONFIG_PATH); } catch (e) { /* 읽기전용 위치면 번들본 사용 */ } }
+const { resolveConfig, diffPaths } = require('./src/siteconfig');
+let configNote = null;   // 설정 병합 결과 — log() 가 준비된 뒤 시작 로그에 남긴다
 const ARGS = new Set(process.argv.slice(1));
 // 데모 영상 녹화 — 실제 앱을 그대로 돌리며 창을 WebM 으로 담는다(ffmpeg 없이 Chromium MediaRecorder).
 // 자동 진행은 스모크 구동부를 그대로 쓰고(--record 는 smoke 를 켠다), 촬영 화면 직전(헤엄 끝)에서 멈춘다.
@@ -87,8 +90,28 @@ function log(level, msg, extra) {
 }
 
 function loadConfig() {
-  const p = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : BUNDLED_CONFIG;
-  const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+  const bundled = JSON.parse(fs.readFileSync(BUNDLED_CONFIG, 'utf8'));
+  let c = bundled;
+  if (app.isPackaged) {
+    let site = null, siteErr = null;
+    if (fs.existsSync(CONFIG_PATH)) { try { site = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch (e) { siteErr = String(e); } }
+    if (siteErr) {
+      // 현장 파일이 깨졌다고 앱이 죽으면 안 된다 — 번들 설정으로 기동하고 크게 남긴다
+      configNote = { level: 'ERROR', msg: '현장 config.json 파싱 실패 — 번들 설정으로 기동', data: { file: CONFIG_PATH, error: siteErr } };
+    } else {
+      const r = resolveConfig(bundled, site);
+      c = r.config;
+      if (r.migrated) {
+        try {
+          if (site && r.reason === 'legacy') fs.copyFileSync(CONFIG_PATH, CONFIG_PATH.replace(/\.json$/, `.legacy-${stamp()}.json`));
+          fs.writeFileSync(CONFIG_PATH, JSON.stringify(r.overrides, null, 2));
+        } catch (e) { /* 읽기전용 위치 — 병합 결과는 그대로 쓴다 */ }
+      }
+      const msg = r.reason === 'legacy' ? '현장 config.json(전체 복사본)을 현장값 오버레이로 변환 — 원본은 .legacy-*.json 백업'
+        : r.reason === 'created' ? '현장 config.json 오버레이 새로 생성' : '현장 오버레이 적용';
+      configNote = { level: 'INFO', msg, data: { file: CONFIG_PATH, overrides: diffPaths(bundled, c) } };
+    }
+  }
   // 필수 검증 — 잘못된 설정으로 현장에서 조용히 죽는 것 방지
   if (!Array.isArray(c.goals) || c.goals.length !== 4) throw new Error('config.goals는 4개여야 합니다');
   if (!['smart', 'dry-run'].includes(c.printer.mode)) throw new Error('config.printer.mode는 smart|dry-run');
@@ -295,6 +318,7 @@ app.whenReady().then(async () => {
   // 웹캠 권한 자동 허용 (키오스크는 프롬프트 불가)
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
   log('INFO', `앱 시작 v${BUILD.version} (${BUILD.builtAt}) mode=${config.printer.mode} kiosk=${IS_KIOSK} smoke=${IS_SMOKE} packaged=${app.isPackaged} installed=${IS_INSTALLED}`, { config: CONFIG_PATH, data: DATA_ROOT, printer: resolvePrinterExe() });
+  if (configNote) log(configNote.level, configNote.msg, configNote.data);
   // 하드웨어 가속 여부 — CPU 렌더링(SwiftShader)이면 물 연출이 끊긴다. 현장 진단의 첫 단서.
   try {
     const g = app.getGPUFeatureStatus() || {};

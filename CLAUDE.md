@@ -297,6 +297,12 @@ dalsu-ar-kiosk/
   테스트 → 인쇄 CLI 빌드 → 스모크 → 인스톨러/zip 빌드 → GitHub Release 업로드까지 한다. 태그와 package.json 버전이 다르면 실패한다.
 - **키오스크는 설치형(NSIS) 으로 설치**한다(`DalsuARKiosk-Setup-X.Y.Z.exe`, 사용자별 원클릭). 설치형만 자동 업데이트가 된다 —
   zip/포터블 실행본은 수동 교체. 설치형의 **데이터 폴더는 `문서\DalsuARKiosk`**(config.json / out / logs) — 업데이트 때 설치 폴더가 갈려도 보존된다.
+- **현장 config.json 은 오버레이다**(2026-09-03, 0.7.5 — `kiosk/src/siteconfig.js`): 콘텐츠(메뉴·문구·색·연출·카드 규격)는 **앱에 든 `kiosk/config.json` 이 기준**이고,
+  데이터 폴더의 config.json 에 적힌 키만 그 위에 덮인다(객체 재귀 병합, 배열·원시값 교체, `_`로 시작하는 키는 주석). 그래서 config 에 든 콘텐츠 변경도 자동 업데이트로 내려간다.
+  · 현장값으로 인정하는 경로 `SITE_PATHS`: `printer`, `camera`, `card.backRotate`, `update`, `output`, `sound`, `river.quality`. 새 현장값 키를 만들면 여기에 추가한다.
+  · 예전 방식(전체 복사본)이 있으면 첫 기동 때 현장값만 뽑아 오버레이로 다시 쓰고 원본은 `config.legacy-<시각>.json` 으로 백업한다. 시작 로그에 `overrides`(번들과 다른 경로)가 남는다.
+  · ⚠ 왜 이렇게 됐나: 0.7.4 를 릴리스했는데 키오스크는 옛 4개 메뉴 화면 그대로였다 — 예전엔 현장 파일이 전체 복사본이라 config 콘텐츠가 영영 안 바뀌었다. 되돌리지 말 것.
+  · 현장에서 급히 문구를 고쳐야 하면 오버레이에 `screen.guideText` 처럼 콘텐츠 키를 적어도 덮인다. 단 그 키는 이후 업데이트로 안 바뀌니 끝나면 지운다.
   시작 로그의 `data` 경로가 곧 현장에서 config.json 을 찾을 위치다. 설치 폴더는 `%LOCALAPPDATA%\Programs\dalsu-ar-kiosk`(패키지명 기준, 앱 이름 아님).
 - **2026-09-01 E2E 실측**: 설치본 0.7.0 → CI 릴리스 v0.7.1 발견 17초 → 다운로드 18초(146MB) → IDLE 24초 후 재시작 → 0.7.1 기동, `config.json` 보존.
   CI(`release.yml`)도 첫 실행에 통과(테스트·인쇄 CLI 빌드·스모크 2종·업로드, 약 12분).
