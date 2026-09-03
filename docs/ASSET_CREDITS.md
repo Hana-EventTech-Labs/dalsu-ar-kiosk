@@ -25,3 +25,13 @@
 
 `kiosk/assets/fish-1.png`, `fish-2.png`, `fish-3.png`, `fish-4.png`, `tree-1.png`, `tree-2.png`, `tree-3.png`, `tree-4.png` (2026-09-01 교체본)는 이미지 생성 모델(Nano Banana Pro)로 단색 크로마 배경 위에 그린 뒤
 `scripts/cutout-nature.py --fish-rot 90` 으로 잘라낸 것입니다. 원본 스트립은 `assets-src/nature/fish-trees-strip.png`.
+
+## 발주처 제공 자산
+
+`kiosk/assets/card-back.png` (포토카드 뒷면, 2026-09-03)는 클라이언트가 전달한 최종 디자인 `assets-src/card-back-final.png`(685×1063, 달수 + SAMSUNG 로고)를
+`scripts/make-card-back.ps1` 이 카드 규격 664×1040 으로 cover 리사이즈(좌우 3px 크롭)한 것입니다. 최종본이 있으면 자동 생성 플레이스홀더는 쓰지 않습니다.
+
+## 재채색 (2026-09-03, 삼성 지정 팔레트)
+
+`tree-1~4.png`, `plant-1~3.png` 는 위 생성물을 `scripts/recolor-nature.py` 로 초록 잎 구간(색상각 55~170°)만 삼성 숲색 `#00c3b2`(≈175°) 쪽으로 옮긴 것입니다.
+줄기·꽃·물고기는 손대지 않았습니다. `water.png` 도 `make-water-tile.py` 의 재채색 기준색을 `#0077c8`(깊은 물) / `#00b3e3` 틴트(얕은 물)로 바꿔 다시 만들었습니다.

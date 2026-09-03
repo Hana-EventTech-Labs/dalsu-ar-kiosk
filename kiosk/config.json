@@ -5,7 +5,7 @@
   },
   "screen": {
     "headTitle": "손끝으로 만드는\n달수의 물길",
-    "headSub": "물을 아끼고, 다시 쓰고, 재활용하고, 자연에 돌려주는\n물 순환의 4단계",
+    "headSub": "",
     "idleSubtitle": "화면을 터치하면 시작합니다",
     "guideText": "물방울을\n터치해주세요",
     "achieveText": "다시 쓰는 물, 다시 살아나는 물길\n그리고, 그 물길 끝에서 만나는 달수",
@@ -45,33 +45,34 @@
       "key": "reduce",
       "label": "Reduce",
       "text": "물 사용량을\n줄이고",
-      "color": "#7fb3ea",
+      "color": "#00b3e3",
       "icon": "reduce",
-      "iconColor": "#0d4a78"
+      "iconColor": "#005a9e"
     },
     {
       "key": "reuse",
       "label": "Reuse",
       "text": "물 재이용을\n늘리고",
-      "color": "#63c3e2",
+      "color": "#00b3e3",
       "icon": "reuse",
-      "iconColor": "#08536f"
+      "iconColor": "#005a9e"
     },
     {
       "key": "recycle",
       "label": "Recycle",
       "text": "정수 기술로\n재활용하여",
-      "color": "#84cb7c",
+      "color": "#00b3e3",
       "icon": "recycle",
-      "iconColor": "#14612a"
+      "iconColor": "#005a9e"
     },
     {
       "key": "return",
       "label": "Return",
       "text": "깨끗하게 정화된 물을\n자연에게 돌려줍니다",
-      "color": "#5fb7d9",
+      "color": "#00b3e3",
       "icon": "return_",
-      "iconColor": "#0b4f6c"
+      "iconColor": "#005a9e",
+      "stage": 2
     }
   ],
   "timing": {

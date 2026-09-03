@@ -12,12 +12,12 @@ const water = require('../kiosk/src/water');
 
 const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'config.json'), 'utf8'));
 
-test('기획 흐름 순서: 물방울 4개 → 물길 → 자연 → 헤엄 → 카운트다운 → 촬영 → 미리보기 → 수령', () => {
+test('기획 흐름 순서: 물방울 전부 → 물길 → 자연 → 헤엄 → 카운트다운 → 촬영 → 미리보기 → 수령', () => {
   const flow = createFlow(cfg.goals.map((g) => g.key));
   flow.start();
   assert.equal(flow.state, STATES.GUIDE);
   cfg.goals.forEach((g) => flow.popBubble(g.key));
-  assert.equal(flow.state, STATES.RIVER, '4개 모두 터뜨려야 물길로 넘어간다');
+  assert.equal(flow.state, STATES.RIVER, '물방울을 모두 터뜨려야 물길로 넘어간다');
   const seq = [];
   for (let i = 0; i < 6; i++) seq.push(flow.advance());
   assert.deepEqual(seq, ['NATURE', 'SWIM', 'COUNTDOWN', 'CAPTURE', 'PREVIEW', 'DONE']);
@@ -37,7 +37,7 @@ test('전체 체험시간이 기획 범위(50초~1분 20초) 안에 든다', () 
 });
 
 test('시안 문구가 config에 모두 있고 4대 목표 문구는 기획 확정본과 일치', () => {
-  for (const k of ['headTitle', 'headSub', 'guideText', 'achieveText', 'natureText', 'countdownText', 'previewTitle', 'previewText', 'doneText']) {
+  for (const k of ['headTitle', 'guideText', 'achieveText', 'natureText', 'countdownText', 'previewTitle', 'previewText', 'doneText']) {
     assert.ok(typeof cfg.screen[k] === 'string' && cfg.screen[k].length > 0, `screen.${k} 필요`);
   }
   const texts = Object.fromEntries(cfg.goals.map((g) => [g.key, g.text]));
@@ -46,6 +46,10 @@ test('시안 문구가 config에 모두 있고 4대 목표 문구는 기획 확�
   assert.equal(texts.reuse, '물 재이용을\n늘리고');
   assert.equal(texts.recycle, '정수 기술로\n재활용하여');
   assert.equal(texts.return, '깨끗하게 정화된 물을\n자연에게 돌려줍니다');
+  // 2026-09-03 클라이언트 요청: 첫 화면은 Reduce/Reuse/Recycle 3개 + 제목 + 달수만. Return 은 셋을 다 누른 뒤 2단계로 나온다. 부제 칸은 없다.
+  assert.deepEqual(cfg.goals.map((g) => g.key), ['reduce', 'reuse', 'recycle', 'return']);
+  assert.deepEqual(cfg.goals.map((g) => g.stage || 1), [1, 1, 1, 2], 'Return 만 2단계');
+  assert.equal(cfg.screen.headSub, '', '부제 칸은 비어 있어야 한다(2026-09-03)');
 });
 
 test('헤엄 이징: 항상 전진하고 등속이 아니다(스트로크가 있다)', () => {
@@ -386,7 +390,7 @@ test('config.river 지류·원근 설정이 유효하다', () => {
   assert.ok(typeof cfg.screen.readyText === 'string' && cfg.screen.readyText.length > 0);
 });
 
-test('시안 5컷: 달성한 4개 목표 문구가 물길 위쪽에 남을 자리가 있다', () => {
+test('시안 5컷: 달성한 목표 문구가 물길 위쪽에 남을 자리가 있다', () => {
   const row = cfg.screen.goalRowTop;
   assert.ok(typeof row === 'number' && row > 10 && row < 30, `문구 줄 위치(${row}vh)`);
   const riverTopY = river.pointAt(0) [1];
