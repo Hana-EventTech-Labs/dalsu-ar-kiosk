@@ -101,10 +101,11 @@ function arcLengths(pts) {
 
 // ---------- 텍스처 생성 (브라우저 전용) ----------
 
+// 삼성 지정 팔레트(2026-09-03): 파랑 #0077c8 (깊은 물) ↔ 물방울 #00b3e3 (얕은 물). 절차 텍스처 폴백용 — 실제 수면은 water.png 가 우선한다.
 const WATER_PALETTE = Object.freeze({
-  deep: [21, 100, 138],     // 물 깊은 가운데
-  mid: [56, 152, 190],
-  shallow: [140, 205, 230], // 둑 가까운 얕은 물
+  deep: [0, 90, 160],       // 물 깊은 가운데 (#0077c8 의 셰이드)
+  mid: [0, 119, 200],       // #0077c8
+  shallow: [102, 210, 238], // 둑 가까운 얕은 물 (#00b3e3 의 틴트)
   foam: [255, 255, 255],
   sheen: [226, 242, 250],   // 물마루가 올라가는 색. 순백이면 거품(급류)으로 읽힌다.
 });
@@ -193,13 +194,13 @@ function drawFlowingRiver(ctx, pts, width, tex, scroll, opts) {
       // shadowBlur 는 도형 전체를 한 번 더 래스터해 흐린다. 폭 400px 물길이면 반경 64px —
       // GPU 없는 PC에서 이것 하나가 프레임당 100ms 넘게 먹는다(실측). 그래서 구워 둘 때만 쓴다.
       ctx.shadowColor = 'rgba(24,70,92,.30)'; ctx.shadowBlur = width * 0.16; ctx.shadowOffsetY = width * 0.04;
-      ctx.fillStyle = 'rgba(70,150,180,1)'; ctx.fill(outline);
+      ctx.fillStyle = 'rgba(0,119,200,1)'; ctx.fill(outline);
     } else {
       // 매 프레임 그려야 하는 구간(물길이 자라는 중)에서는 같은 '땅에 파인' 느낌을 겹친 스트로크로 낸다
       ctx.translate(0, width * 0.04);
       softStroke(ctx, outline, '24,70,92', width * 0.22, 0.30, 3);
       ctx.translate(0, -width * 0.04);
-      ctx.fillStyle = 'rgba(70,150,180,1)'; ctx.fill(outline);
+      ctx.fillStyle = 'rgba(0,119,200,1)'; ctx.fill(outline);
     }
     ctx.restore();
   }
@@ -257,7 +258,7 @@ function drawFlowingRiver(ctx, pts, width, tex, scroll, opts) {
     pts.forEach(([x, y], i) => (i ? mid.lineTo(x, y) : mid.moveTo(x, y)));
     if (hiQ) {
       try { ctx.filter = `blur(${Math.max(1, width * 0.09).toFixed(1)}px)`; } catch (e) { /* noop */ }
-      ctx.globalAlpha = 0.42; ctx.strokeStyle = 'rgba(16,66,92,1)'; ctx.lineWidth = width * 0.42; ctx.stroke(mid);
+      ctx.globalAlpha = 0.42; ctx.strokeStyle = 'rgba(0,70,130,1)'; ctx.lineWidth = width * 0.42; ctx.stroke(mid);
     } else softStroke(ctx, mid, '16,66,92', width * 0.42, 0.42, 3);
     ctx.restore();
   }

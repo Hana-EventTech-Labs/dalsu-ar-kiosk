@@ -37,8 +37,9 @@ def main():
     lum = arr.mean(axis=2, keepdims=True)
     detail = arr - lum                                   # 물결 디테일(색 편차)
     t = (lum - lum.min()) / max(1.0, float(lum.max() - lum.min()))   # 0~1 밝기 순위
-    # 삼성 블루 계열(2026-09-01 요청). 공식 #1428A0 그대로면 물이 잉크처럼 어두워 밝은 쪽으로 기울였다.
-    deep = np.array([22, 96, 196], np.float32); light = np.array([132, 196, 244], np.float32)
+    # 삼성 지정 팔레트(2026-09-03 클라이언트 전달): 깊은 물 = 파랑 계열 #0077c8, 얕은 반사 = 물방울색 #00b3e3 을 흰색과 반씩 섞은 틴트.
+    # (2026-09-01 에는 공식 #1428A0 을 밝게 기울인 임시값이었다)
+    deep = np.array([0, 119, 200], np.float32); light = np.array([128, 217, 241], np.float32)
     base_col = deep * (1 - t) + light * t               # 어두운 곳 = 깊은 물, 밝은 곳 = 얕은 반사
     arr = base_col + detail * 1.35                       # 디테일 대비를 살린다
     out = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))

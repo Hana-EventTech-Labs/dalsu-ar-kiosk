@@ -34,7 +34,8 @@
   const stage = $('stage'), cam = $('cam'), fx = $('fx'), fxCtx = fx.getContext('2d');
   const card = $('card'), cardCtx = card.getContext('2d');
   $('head-title').textContent = cfg.screen.headTitle;
-  $('head-sub').textContent = cfg.screen.headSub;
+  $('head-sub').textContent = cfg.screen.headSub || '';
+  $('head-sub').hidden = !cfg.screen.headSub;   // 2026-09-03 부제 제거 요청 — 빈 문자열이면 칸째 숨긴다
   $('idle-sub').textContent = cfg.screen.idleSubtitle;
   $('guide-text').textContent = cfg.screen.guideText;
   $('countdown-text').textContent = cfg.screen.countdownText;
@@ -235,10 +236,21 @@
   // ---------- 물방울 (시안 1~4컷: 가로 1열, 눈물방울, 터치하면 그 자리에 목표 문구가 남는다) ----------
   const DROP_W = 21, DROP_GAP = 2.4;                                  // cqw (무대 폭 기준)
   const DROP_TOP = 28;   // cqh. 지류가 목표 문구 아래에서 흘러나올 공간 확보                                                // vh
-  const POS = cfg.goals.map((_, i) => {
-    const total = cfg.goals.length * DROP_W + (cfg.goals.length - 1) * DROP_GAP;
-    return [(100 - total) / 2 + i * (DROP_W + DROP_GAP), DROP_TOP];    // [vw, vh]
-  });
+  // 2026-09-03 클라이언트 요청: 첫 화면에는 Reduce/Reuse/Recycle 3개만. 셋을 다 누르면 그 문구가 상단 줄로 올라가고
+  // 4번째 Return 물방울이 가운데 나타난다(`goals[].stage: 2`). Return 을 누르면 4개 문구가 상단 한 줄에 서고 4줄기 합류가 이어진다.
+  // 물방울 자리는 **같은 단계 안에서** 가운데 정렬하고, 상단 줄 슬롯은 4개 전부를 한 줄로 배치한 x 다.
+  const stageOf = (g) => g.stage || 1;
+  const rowSlots = (n) => { const total = n * DROP_W + (n - 1) * DROP_GAP; return Array.from({ length: n }, (_, i) => (100 - total) / 2 + i * (DROP_W + DROP_GAP)); };
+  const POS = (() => {
+    const byStage = {}; cfg.goals.forEach((g) => { (byStage[stageOf(g)] = byStage[stageOf(g)] || []).push(g); });
+    return cfg.goals.map((g) => {
+      const list = byStage[stageOf(g)], slots = rowSlots(list.length);
+      return [slots[list.indexOf(g)], DROP_TOP];                        // [cqw, cqh]
+    });
+  })();
+  const ROW_X = rowSlots(cfg.goals.length).map((x) => x + DROP_W / 2);   // 상단 줄에서 각 문구의 중심 x (cqw)
+  const HAS_STAGE2 = cfg.goals.some((g) => stageOf(g) > 1);
+  let stage2Shown = false;
   function buildBubbles() {
     $('guide-text').style.opacity = '';
     document.querySelectorAll('.bubble .done').forEach((el) => { el.style.animation = ''; el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
@@ -246,6 +258,7 @@
     cfg.goals.forEach((g, i) => {
       const b = document.createElement('div'); b.className = 'bubble'; b.dataset.key = g.key;
       b.style.left = POS[i][0] + 'cqw'; b.style.top = POS[i][1] + 'cqh';
+      if (stageOf(g) > 1) b.classList.add('staged');                      // 앞 단계를 다 누르면 revealStage2 가 보인다
       b.innerHTML = `${artDropSvg(i, ART_DROP_COLOR)}<div class="inner">${artIconSvg(g.icon, g.iconColor)}<div class="label"></div></div><div class="done"></div>`;
       b.querySelector('.inner svg').classList.add('icon');
       b.querySelector('.label').textContent = g.label;
@@ -260,8 +273,21 @@
       b.addEventListener('pointerdown', () => onBubble(g, b));
       wrap.appendChild(b);
     });
+    stage2Shown = false;
     $('guide-hand').style.opacity = .95;
     requestAnimationFrame(moveHand);   // 방금 만든 물방울의 레이아웃이 확정된 뒤에 배치
+  }
+  // 1단계(3개)를 다 누른 뒤: 그 문구들을 상단 줄로 올리고 Return 물방울을 가운데 띄운다
+  function revealStage2() {
+    if (stage2Shown || flow.state !== STATES.GUIDE) return;
+    stage2Shown = true;
+    raiseGoalTexts();
+    document.querySelectorAll('.bubble.staged').forEach((b) => { b.classList.remove('staged'); b.classList.add('reveal'); });
+    $('guide-text').style.opacity = '';   // "물방울을 터치해주세요" 를 다시 보여 준다
+    sound.chime();
+    requestAnimationFrame(moveHand);
+    if (SMOKE && scale >= 0.3) later(() => snap('stage2'), 700);
+    log('INFO', '2단계 물방울 표시', { keys: cfg.goals.filter((g) => stageOf(g) > 1).map((g) => g.key) });
   }
   // getBoundingClientRect()는 뷰포트 절대 좌표다. 캔버스(#fx)와 #stage 안의 요소는 '무대 좌표계'를 쓰므로
   // 무대의 좌상단 오프셋을 빼야 한다. 세로 키오스크에서는 오프셋이 0이라 티가 안 나지만,
@@ -280,7 +306,8 @@
     return cfg.goals.map((g, i) => {
       const bub = document.querySelector(`.bubble[data-key="${g.key}"]`);
       const done = bub && bub.querySelector('.done');
-      const cx = bub ? elCenter(bub).x : ((POS[i][0] + DROP_W / 2) / 100) * W;
+      // 문구는 raiseGoalTexts 가 상단 줄 슬롯(ROW_X)으로 옮겨 놓았다 — 물방울 자리(단계별 정렬)와 다르다
+      const cx = (ROW_X[i] / 100) * W;
       const h = (done && done.scrollHeight ? done.scrollHeight : H * 0.10) * 0.72;
       return [cx / W, (rowY + h / 2 + H * 0.015) / H];
     });
@@ -289,14 +316,19 @@
   // ("4개의 목표가 모여 하나의 깨끗한 물길이 됩니다" — 4개가 보여야 그 문장이 성립한다)
   // 원래 자리에 두면 완성된 S자 물길이 문구를 관통하므로, 물길이 시작되는 y 위쪽으로 올린다.
   function raiseGoalTexts() {
-    const H = fx.clientHeight;
+    const W = fx.clientWidth, H = fx.clientHeight;
     const targetY = H * ((cfg.screen.goalRowTop || 17) / 100);
-    document.querySelectorAll('.bubble .done').forEach((el) => {
-      const dy = targetY - elCenter(el).y;
+    // 이미 터진(popped) 문구만 올린다. 아직 안 나온 2단계 물방울의 문구는 제자리에 남아 있어야 한다.
+    // 이동량은 **물방울(변형 없음) 중심** 기준으로 잰다 — 이미 올라간 문구를 다시 재면 transform 이 누적된다.
+    document.querySelectorAll('.bubble.popped').forEach((bub) => {
+      const i = cfg.goals.findIndex((g) => g.key === bub.dataset.key);
+      const el = bub.querySelector('.done'); if (!el || i < 0) return;
+      const c = elCenter(bub);
+      const dx = (ROW_X[i] / 100) * W - c.x, dy = targetY - c.y;
       el.style.animation = 'none';   // doneIn 등장 애니메이션(fill:both)이 transform을 덮어쓰므로 먼저 해제
       void el.offsetWidth;
       el.style.transition = `transform ${ms(T.riverFormMs * 0.45)}ms cubic-bezier(.2,.8,.3,1)`;
-      el.style.transform = `translateY(${dy.toFixed(1)}px) scale(.72)`;
+      el.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.72)`;
     });
   }
   // 자연 회복 단계로 넘어가면 역할을 다했으므로 부드럽게 사라진다 (시안 6컷에는 문구가 없다)
@@ -313,7 +345,7 @@
     if (next < 0) return;
     // 대상 물방울의 실제 위치를 재서 바로 아래에 붙인다 — 아이콘·라벨을 절대 덮지 않는다
     const el = document.querySelector(`.bubble[data-key="${cfg.goals[next].key}"]`);
-    if (!el) return;
+    if (!el || el.classList.contains('staged')) return;   // 아직 안 나온 2단계 물방울 — 나올 때 revealStage2 가 다시 부른다
     const c = elCenter(el, 0.90);
     hand.style.left = c.x + 'px';
     hand.style.top = c.y + 'px';
@@ -322,6 +354,7 @@
   function onBubble(goal, el) {
     const r = flow.popBubble(goal.key);
     if (!r.accepted) return;
+    el.classList.remove('reveal');   // 등장 애니메이션(fill:both)이 남아 있으면 dropPop 을 덮어써 물방울이 안 사라진다
     el.classList.add('popped');
     // 시안 3컷: 터진 자리에 물 스플래시
     const c = elCenter(el, 0.45);
@@ -335,7 +368,11 @@
     $('guide-text').style.opacity = 0; // 시안 3컷부터는 안내 문구 없이 목표 문구만
     log('INFO', '물방울', { key: goal.key, popped: r.popped });
     if (r.allDone) later(runStory, T.goalTextMs); // 마지막 문구를 읽을 틈을 준 뒤 물길 연출
-    else resetIdleTimer();
+    else {
+      resetIdleTimer();
+      const stage1Left = cfg.goals.some((g) => stageOf(g) === 1 && !flow.poppedKeys.includes(g.key));
+      if (HAS_STAGE2 && !stage1Left && !stage2Shown) later(revealStage2, T.goalTextMs);   // 3개 문구를 읽을 틈을 준 뒤
+    }
   }
 
   // ---------- 연출 ----------
@@ -369,7 +406,7 @@
     tribs.forEach((t, i) => {
       const g = cfg.goals[i];
       particles.stream((u) => { const [x, y] = tributaryPointAt(t.path, u * Math.min(1, anim.tribProgress * 1.15)); return [x * fx.clientWidth, y * fx.clientHeight]; },
-        g ? g.color : '#8fd3ea', 6, ms(T.achieveMs) / 1000, Math.min(W0, H0) / 540);
+        g ? g.color : '#00b3e3', 6, ms(T.achieveMs) / 1000, Math.min(W0, H0) / 540);
     });
     if (SMOKE && scale >= 0.3) later(() => snap('tributary'), T.achieveMs * 0.7);
     if (E2E) {
@@ -390,8 +427,8 @@
       const sc = Math.min(W0, H0) / 900;
       tribs.forEach((t, i) => {
         const g = cfg.goals[i], px = t.to[0] * W0, py = t.to[1] * H0;
-        particles.splash(px, py, '#bfe6f4', sc * 0.85);
-        particles.burst(px, py, g ? g.color : '#8fd3ea', 14, sc);
+        particles.splash(px, py, '#b3e8f6', sc * 0.85);
+        particles.burst(px, py, g ? g.color : '#00b3e3', 14, sc);
       });
       anim.mergeFlash = 0.6;
       sound.chime();
@@ -401,13 +438,13 @@
       //    지류는 이 동안 계속 흐른다 — 사라지면 "4줄기가 하나가 됐다"가 아니라 "없어지고 딴 게 생겼다"로 보인다.
       if (SMOKE && scale >= 0.3) later(() => snap('river'), T.riverFormMs * 0.75);
       animateValue((p) => (anim.riverProgress = p), T.riverFormMs, () => {
-        { const e = pointAt(1); particles.sparkle(e[0] * W0, e[1] * H0, 12, '#bfe6f4'); } sound.chime();
+        { const e = pointAt(1); particles.sparkle(e[0] * W0, e[1] * H0, 12, '#b3e8f6'); } sound.chime();
         flow.advance(); setState(); // NATURE — 달수가 물길 머리에 떠오른다 (자연은 달수가 지나가며 살아난다)
         animateValueRaw((p) => (anim.tribFade = 1 - p), 900, () => { anim.tribFade = 0; particles.clearFlow(); }); // 이제 본류에 흡수
         fadeGoalTexts();
         $('story-text').textContent = cfg.screen.natureText;
         if (SMOKE && scale >= 0.3) later(() => snap('nature'), T.natureMs * 0.7);
-        { const e = pointAt(0); particles.splash(e[0] * W0, e[1] * H0, '#bfe6f4', Math.min(W0, H0) / 1400); }
+        { const e = pointAt(0); particles.splash(e[0] * W0, e[1] * H0, '#b3e8f6', Math.min(W0, H0) / 1400); }
         animateValue((p) => (anim.enter = p), T.natureMs, () => {
           anim.enter = 1; sound.chime();
           flow.advance(); setState(); // SWIM — 달수가 내려가며 지나온 자리에 자연이 살아난다
@@ -623,7 +660,7 @@
     const c = photoCrop(sw, sh, W, H, cfg.card.photoZoom);
     if (c.dh < H) {                      // 사진 아래 여백 — 하늘빛에서 풀빛으로
       const bg = ctx.createLinearGradient(0, c.dh * 0.92, 0, H);
-      bg.addColorStop(0, '#dbeaf3'); bg.addColorStop(0.45, '#cfe3d6'); bg.addColorStop(1, '#b9d9b6');
+      bg.addColorStop(0, '#d9f3fa'); bg.addColorStop(0.45, '#cdf1ec'); bg.addColorStop(1, '#a6e6dd');   // 물방울색 틴트 → 숲색 틴트
       ctx.fillStyle = bg;
       // 오버레이일 때는 사진 자리를 비워 둔다(라이브 영상이 그 밑에 있다)
       if (o.photo === false) ctx.fillRect(0, c.dh - H * 0.055, W, H - c.dh + H * 0.055); else ctx.fillRect(0, 0, W, H);
@@ -636,7 +673,7 @@
     }
     if (c.dh < H) {                      // 사진 아래 경계를 부드럽게 — 딱 잘린 선이면 합성이 티난다
       const fade = ctx.createLinearGradient(0, c.dh - H * 0.055, 0, c.dh);
-      fade.addColorStop(0, 'rgba(219,234,243,0)'); fade.addColorStop(1, 'rgba(219,234,243,1)');
+      fade.addColorStop(0, 'rgba(217,243,250,0)'); fade.addColorStop(1, 'rgba(217,243,250,1)');
       ctx.fillStyle = fade; ctx.fillRect(0, c.dh - H * 0.055, W, H * 0.055 + 1);
     }
 
@@ -688,7 +725,7 @@
       for (const [gx, gw, gh, alpha] of [
         [-0.02, 0.17, 0.095, 0.62], [0.13, 0.15, 0.070, 0.52], [0.27, 0.16, 0.088, 0.58],
         [0.42, 0.15, 0.062, 0.48], [0.56, 0.16, 0.082, 0.55], [0.71, 0.15, 0.068, 0.5], [0.85, 0.18, 0.092, 0.6]]) {
-        ctx.globalAlpha = alpha; ctx.fillStyle = '#2f6e3a';
+        ctx.globalAlpha = alpha; ctx.fillStyle = '#00907f';
         ctx.beginPath();
         for (let b = 0; b < 9; b++) {   // 풀 포기 — 아래는 붙고 위로 갈수록 벌어진다
           const bx = (gx + gw * (b / 8)) * W, tipx = bx + (b - 4) * W * 0.006;
@@ -1013,9 +1050,9 @@
       const dipR = w * 0.46, sink = 1 - pose.sink;
       const cy = y + bobPx + h * 0.10;
       const g = ctx.createRadialGradient(x, cy, dipR * 0.15, x, cy, dipR);
-      g.addColorStop(0, `rgba(14,60,86,${(0.20 + sink * 0.14).toFixed(3)})`);
-      g.addColorStop(0.62, `rgba(20,80,110,${(0.10 + sink * 0.08).toFixed(3)})`);
-      g.addColorStop(1, 'rgba(20,80,110,0)');
+      g.addColorStop(0, `rgba(0,60,110,${(0.20 + sink * 0.14).toFixed(3)})`);
+      g.addColorStop(0.62, `rgba(0,80,140,${(0.10 + sink * 0.08).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(0,80,140,0)');
       ctx.save();
       ctx.translate(x, cy); ctx.scale(1, 0.52); ctx.translate(-x, -cy);
       ctx.fillStyle = g;
@@ -1050,7 +1087,7 @@
     ctx.scale(psx * fx, psy);
     // 수면 그림자 — 몸이 가라앉을수록 진하고 넓어진다
     ctx.save();
-    ctx.globalAlpha = 0.08 + (1 - pose.sink) * 0.10; ctx.fillStyle = '#12506f';
+    ctx.globalAlpha = 0.08 + (1 - pose.sink) * 0.10; ctx.fillStyle = '#004a80';
     ctx.beginPath(); ctx.ellipse(0, h * 0.30, w * (0.34 + (1 - pose.sink) * 0.12), h * 0.065, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     // 몸은 통짜로 그린다. 길이 방향으로 잘라 굽이치게 하는 방법을 시도했다가 뺐다 —
@@ -1071,7 +1108,7 @@
     // 몸이 물에 잠긴 부분을 물빛으로 덮어 '물속에 들어가 있음'을 만든다
     if (swimming) inWater(() => {
       ctx.globalAlpha = 0.13 + (1 - pose.sink) * 0.12;
-      ctx.fillStyle = 'rgba(70,150,185,1)';
+      ctx.fillStyle = 'rgba(0,119,200,1)';
       ctx.beginPath(); ctx.ellipse(x, y + bobPx + h * 0.24, w * 0.34, h * 0.11, 0, 0, Math.PI * 2); ctx.fill();
     });
   }
@@ -1113,9 +1150,10 @@
     // 띠마다 능선은 밝게, 아래로 갈수록 어둡게 — 볕을 받은 둥근 언덕이 되도록 세로 그라데이션을 깐다.
     // 그라데이션은 도형 하나당 한 번뿐이라 비용이 사실상 0이다(blur 와 다르다).
     const bands = [
-      { y: base, amp: 0.045, k: 1.0, top: [176, 208, 186], bot: [126, 172, 150], a: 0.62, depth: 0.06 },
-      { y: base + 0.055, amp: 0.055, k: 1.6, top: [150, 196, 156], bot: [96, 152, 112], a: 0.78, depth: 0.10 },
-      { y: base + 0.135, amp: 0.05, k: 2.4, top: [168, 208, 156], bot: [104, 158, 112], a: 0.74, depth: 0.55 },
+      // 색은 삼성 숲색 #00c3b2 의 틴트(능선) → 셰이드(아래). 예전 연두·올리브(176,208,186 계열)로 되돌리지 말 것.
+      { y: base, amp: 0.045, k: 1.0, top: [170, 230, 222], bot: [104, 200, 186], a: 0.62, depth: 0.06 },
+      { y: base + 0.055, amp: 0.055, k: 1.6, top: [134, 218, 206], bot: [56, 178, 162], a: 0.78, depth: 0.10 },
+      { y: base + 0.135, amp: 0.05, k: 2.4, top: [160, 230, 220], bot: [104, 204, 190], a: 0.74, depth: 0.55 },   // 가장 넓은 잔디는 나무보다 밝게 — 나무가 묻히지 않게
     ];
     const rgba = (c, al) => `rgba(${c[0]},${c[1]},${c[2]},${al})`;
     ctx.save(); ctx.globalAlpha = Math.min(1, p * 1.4);
@@ -1134,7 +1172,7 @@
       ctx.fillStyle = g; ctx.fill();
       // 능선 하이라이트 — 볕이 닿는 위쪽 모서리. 이 한 줄이 '접힌 종이'를 '둥근 언덕'으로 바꾼다.
       ctx.save();
-      ctx.strokeStyle = rgba([226, 240, 214], b.a * 0.42);
+      ctx.strokeStyle = rgba([222, 246, 242], b.a * 0.42);
       ctx.lineWidth = Math.max(1, H * 0.004);
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * W, y * H) : ctx.moveTo(x * W, y * H)));
@@ -1146,7 +1184,7 @@
     ctx.save();
     for (const q of MEADOW) {
       const y = gTop + q.y * (gBot - gTop);
-      ctx.fillStyle = q.up ? 'rgba(202,228,180,.16)' : 'rgba(110,158,112,.13)';
+      ctx.fillStyle = q.up ? 'rgba(190,240,232,.16)' : 'rgba(60,170,155,.13)';
       ctx.beginPath();
       ctx.ellipse(q.x * W, y * H, q.r * W, q.r * W * 0.30, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -1273,7 +1311,7 @@
     if (idx < 0) { el.classList.remove('on'); return; }
     const g = (cfg.goals || []).find((x) => x.key === PAYOFF[idx].key) || {};
     $('story-goal-text').textContent = PAYOFF[idx].text;
-    $('story-goal-dot').style.background = g.color || '#63c3e2';
+    $('story-goal-dot').style.background = g.color || '#00b3e3';
     el.classList.remove('on');
     void el.offsetWidth;                 // 애니메이션을 다시 태우려면 리플로우가 필요하다
     el.classList.add('on');

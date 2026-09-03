@@ -4,7 +4,7 @@
 # 예전에는 가로 기준 좌표를 하드코딩해 세로 캔버스에서 제목이 잘리고 아래 40%가 비었다.
 # 이제 캔버스 방향을 보고 배치를 바꾸고, 긴 제목은 폭에 맞춰 줄바꿈한다.
 #
-# 최종 디자인(그래픽 제작 항목)이 나오면 kiosk/assets/card-back.png 만 덮어쓰면 된다.
+# 최종 디자인은 assets-src/card-back-final.png 에 둔다 — 있으면 이 스크립트가 카드 규격으로 맞춰 kiosk/assets/card-back.png 을 만든다.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent
@@ -13,6 +13,25 @@ $cfg = Get-Content (Join-Path $root 'kiosk\config.json') -Raw -Encoding UTF8 | C
 $W = [int]$cfg.card.width; $H = [int]$cfg.card.height
 $portrait = $H -gt $W
 Write-Host ("뒷면 카드 규격: {0}x{1} ({2})" -f $W, $H, $(if ($portrait) { '세로' } else { '가로' }))
+
+# 최종 디자인(클라이언트 전달본, 2026-09-03)이 assets-src 에 있으면 그것을 카드 규격에 맞춰 넣는다.
+# 아래의 자동 생성 플레이스홀더는 최종본이 없을 때만 쓴다 — `npm run assets` 가 최종본을 덮어쓰면 안 된다.
+$final = Join-Path $root 'assets-src\card-back-final.png'
+if (Test-Path $final) {
+  $src = [System.Drawing.Image]::FromFile($final)
+  $bmp = New-Object System.Drawing.Bitmap $W, $H
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  $g.InterpolationMode = 'HighQualityBicubic'; $g.PixelOffsetMode = 'HighQuality'
+  # cover: 비율을 지켜 카드를 꽉 채우고 넘치는 쪽을 가운데 기준으로 잘라낸다 (685x1063 -> 664x1040 은 좌우 3px 씩)
+  $scale = [Math]::Max($W / $src.Width, $H / $src.Height)
+  $dw = [int][Math]::Ceiling($src.Width * $scale); $dh = [int][Math]::Ceiling($src.Height * $scale)
+  $g.DrawImage($src, [int](($W - $dw) / 2), [int](($H - $dh) / 2), $dw, $dh)
+  $out = Join-Path $assets 'card-back.png'
+  $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
+  Write-Host ("card-back.png <- 최종 디자인 {0} ({1}x{2}) -> {3} ({4}x{5})" -f (Split-Path $final -Leaf), $src.Width, $src.Height, $out, $W, $H)
+  $g.Dispose(); $bmp.Dispose(); $src.Dispose()
+  return
+}
 
 $bmp = New-Object System.Drawing.Bitmap $W, $H
 $g = [System.Drawing.Graphics]::FromImage($bmp)
