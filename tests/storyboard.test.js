@@ -30,26 +30,83 @@ test('전체 체험시간이 기획 범위(50초~1분 20초) 안에 든다', () 
   // 연출·대기 구간 합 (사용자 터치 시간은 제외)
   const auto = T.achieveMs + T.riverFormMs + T.natureMs + T.swimMs + (T.readyMs || 0)
     + (T.countdownSec + 1) * 1000 + T.previewMs + T.doneMs;
-  const touchFast = T.goalTextMs + 4 * 1200;   // 빠른 관람객: 물방울당 약 1.2초
-  const touchSlow = T.goalTextMs + 4 * 4000;   // 느린 관람객: 물방울당 약 4초
+  // 물방울 단계(2026-09-06 스펙): 마지막 터짐 뒤 burstMs + holdMs 만큼 있다가 다음 구간
+  const after = T.bubble.burstMs + T.bubble.holdMs;
+  const touchFast = after + cfg.goals.length * 1200;   // 빠른 관람객: 물방울당 약 1.2초
+  const touchSlow = after + cfg.goals.length * 4000;   // 느린 관람객: 물방울당 약 4초
   assert.ok((auto + touchFast) / 1000 >= 50, `최소 ${(auto + touchFast) / 1000}초 — 50초 이상이어야`);
   assert.ok((auto + touchSlow) / 1000 <= 80, `최대 ${(auto + touchSlow) / 1000}초 — 80초 이하여야`);
 });
 
-test('시안 문구가 config에 모두 있고 4대 목표 문구는 기획 확정본과 일치', () => {
-  for (const k of ['headTitle', 'guideText', 'achieveText', 'natureText', 'countdownText', 'previewTitle', 'previewText', 'doneText']) {
+test('시안 문구가 config에 모두 있고 물방울 문구는 클라이언트 확정본(2026-09-06)과 일치', () => {
+  for (const k of ['headTitle', 'guideText', 'achieveText', 'natureText', 'readyText', 'previewTitle', 'previewText', 'doneText']) {
     assert.ok(typeof cfg.screen[k] === 'string' && cfg.screen[k].length > 0, `screen.${k} 필요`);
   }
-  const texts = Object.fromEntries(cfg.goals.map((g) => [g.key, g.text]));
-  // 2026-09-01 클라이언트 콘텐츠 수정본 (FM)KIWW2026_AR포토부스_콘텐츠수정.pptx
-  assert.equal(texts.reduce, '물 사용량을\n줄이고');
-  assert.equal(texts.reuse, '물 재이용을\n늘리고');
-  assert.equal(texts.recycle, '정수 기술로\n재활용하여');
-  assert.equal(texts.return, '깨끗하게 정화된 물을\n자연에게 돌려줍니다');
-  // 2026-09-03 클라이언트 요청: 첫 화면은 Reduce/Reuse/Recycle 3개 + 제목 + 달수만. Return 은 셋을 다 누른 뒤 2단계로 나온다. 부제 칸은 없다.
-  assert.deepEqual(cfg.goals.map((g) => g.key), ['reduce', 'reuse', 'recycle', 'return']);
-  assert.deepEqual(cfg.goals.map((g) => g.stage || 1), [1, 1, 1, 2], 'Return 만 2단계');
+  const texts = Object.fromEntries(cfg.goals.map((g) => [g.key, g.text.replace(/\n/g, ' ')]));
+  // 2026-09-06 클라이언트 [최종 1차] 참고사항.txt — 3개 물방울, 문구는 터진 자리에 남는다
+  assert.equal(texts.reduce, '물 사용량을 줄입니다');
+  assert.equal(texts.reuse, '사용한 물을 재이용합니다');
+  assert.equal(texts.restore, '사용한 물 이상을 복원합니다');
+  assert.deepEqual(cfg.goals.map((g) => g.key), ['reduce', 'reuse', 'restore'], '물방울 3개 (Recycle·Return 2단계는 폐기)');
+  assert.deepEqual(cfg.goals.map((g) => g.label), ['Reduce', 'Reuse', 'Restore']);
+  assert.ok(cfg.goals.every((g) => !g.stage), '2단계 물방울은 없다');
   assert.equal(cfg.screen.headSub, '', '부제 칸은 비어 있어야 한다(2026-09-03)');
+  assert.equal(cfg.screen.guideText, '물방울을 터치해주세요!', '데모 영상의 안내 문구');
+});
+
+test('물방울 단계 타이밍이 클라이언트 스펙(2026-09-06 5·6번) 수치와 같다', () => {
+  const B = cfg.timing.bubble;
+  assert.deepEqual(B, { pressMs: 80, burstMs: 1000, messageAtMs: 200, messageFadeMs: 200, collectAtMs: 150, collectMs: 700,
+    collectStaggerMs: 40, collectCount: 6, arriveMs: 200, holdMs: 500 });
+  // 알갱이가 다 도착(150+700+40×5)한 뒤에 다음 구간으로 넘어가야 상단 물방울 3개가 맺힌 그림이 보인다
+  assert.ok(B.collectAtMs + B.collectMs + B.collectStaggerMs * (B.collectCount - 1) < B.burstMs + B.holdMs);
+  assert.ok(!('goalTextMs' in cfg.timing), 'goalTextMs 는 burstMs+holdMs 로 대체됐다');
+});
+
+test('클라이언트 UI 자산과 메타가 서로 맞는다 (물방울 PNG · 터짐 시트 · 대기 루프 · 카드 프레임 · 물길 영상)', () => {
+  const dir = path.join(__dirname, '..', 'kiosk', 'assets');
+  const J = (n) => JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
+  for (const g of cfg.goals) assert.ok(g.image && fs.existsSync(path.join(__dirname, '..', 'kiosk', g.image)), `물방울 이미지 없음: ${g.image}`);
+  const bm = J('bubble.json');
+  assert.ok(bm.body.x + bm.body.w <= bm.w && bm.body.y + bm.body.h <= bm.h, '물방울 몸체가 캔버스 안에');
+  if (fs.existsSync(path.join(dir, 'burst.json'))) {
+    const m = J('burst.json');
+    assert.ok(fs.existsSync(path.join(dir, m.sheet || 'burst.png')), '터짐 시트 PNG 가 없다');
+    assert.equal(m.cols * m.cellW, m.sheetW); assert.equal(m.rows * m.cellH, m.sheetH);
+    assert.ok(m.frames > 0 && m.frames <= m.cols * m.rows && m.fps > 0);
+    assert.ok(m.drop.x >= 0 && m.drop.y >= 0 && m.drop.x + m.drop.w <= m.cellW && m.drop.y + m.drop.h <= m.cellH, '정지 물방울 bbox 가 셀 안에');
+    assert.ok(Math.abs(m.dropAspect - m.bubbleBodyAspect) < 0.03, '영상 물방울과 PNG 물방울 종횡비가 어긋나면 터짐이 물방울과 안 겹친다');
+  }
+  if (fs.existsSync(path.join(dir, 'idle-loop.json'))) {
+    const m = J('idle-loop.json');
+    assert.ok(m.seamMAD <= m.neighborMAD * 2, `루프 이음매 ${m.seamMAD} 가 인접 프레임 차 ${m.neighborMAD} 의 2배를 넘는다`);
+    assert.ok(m.durationSec > 3, '루프가 너무 짧다');
+  }
+  const fm = J(String(cfg.card.frameImage).split('/').pop().replace(/\.png$/, '.json'));
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'kiosk', cfg.card.frameImage)), '카드 프레임 PNG 없음');
+  assert.equal(fm.w, cfg.card.width); assert.equal(fm.h, cfg.card.height);
+  assert.ok(fm.hole.w > 0.5 && fm.hole.h > 0.4 && fm.hole.x + fm.hole.w <= 1 && fm.hole.y + fm.hole.h <= 1, '사진 구멍이 카드 안에, 충분히 크게');
+  if (cfg.screen.riverVideo) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'kiosk', cfg.screen.riverVideo)), '물길 영상 파일 없음');
+    const m = J('river.json');
+    assert.ok(m.durationSec > 5 && m.durationSec < 20, `물길 영상 길이 ${m.durationSec}s`);
+    assert.equal(m.drops.length, cfg.goals.length, '첫 프레임 물방울 위치는 물방울 수만큼');
+    m.drops.forEach((d, i) => { assert.ok(d[0] > 0 && d[0] < 1 && d[1] > 0 && d[1] < 0.35, `도착점 ${i} 이 상단 화면 안이어야`); });
+    assert.ok(m.drops[0][0] < m.drops[1][0] && m.drops[1][0] < m.drops[2][0], '왼→오 순서');
+  }
+});
+
+test('앞면 단면 인쇄 (뒷면은 옵셋 사전 인쇄) — main.js 가 뒷면을 무조건 넘기지 않는다', () => {
+  assert.equal(cfg.card.printBack, false);
+  assert.ok(!/양면/.test(cfg.screen.printStages.settings), '단면 인쇄인데 "양면" 문구가 남아 있다');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'main.js'), 'utf8');
+  assert.match(src, /config\.card\.printBack === true/, 'printBack 스위치가 없다');
+  assert.doesNotMatch(src, /\['--front', front, '--back'/, '--back 을 무조건 넘긴다');
+  const rs = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+  assert.doesNotMatch(rs, /revealStage2|raiseGoalTexts|stage2Shown/, '2단계 물방울 코드가 남아 있다');
+  assert.match(rs, /function collectTargets/, '상단 도착점 계산이 없다');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'index.html'), 'utf8');
+  assert.match(html, /id="idle-video"/); assert.match(html, /media-src 'self'/);
 });
 
 test('헤엄 이징: 항상 전진하고 등속이 아니다(스트로크가 있다)', () => {
@@ -331,11 +388,12 @@ test('config.river 설정이 유효하다', () => {
   assert.ok(r.tilePx > 0 && r.minTaper > 0 && r.minTaper < 1);
 });
 
-test('4줄기 합류: 4개 물길이 위에서 아래로 하나로 뭉친 뒤 그 자리에서 물길이 시작된다 (기획 5번)', () => {
-  const goals = [[0.149, 0.21], [0.383, 0.21], [0.617, 0.21], [0.851, 0.21]];
+// 지류는 개수와 무관하다 — 3개(2026-09-06 확정, 상단 물방울 자리)와 4개(예전 구성) 둘 다 검사한다
+for (const goals of [[[0.25, 0.22], [0.5, 0.22], [0.75, 0.22]], [[0.149, 0.21], [0.383, 0.21], [0.617, 0.21], [0.851, 0.21]]])
+test(`${goals.length}줄기 합류: 물길이 위에서 아래로 하나로 뭉친 뒤 그 자리에서 물길이 시작된다 (기획 5번)`, () => {
   const head = river.pointAt(0);
   const tribs = river.tributaries(goals, head);
-  assert.equal(tribs.length, 4);
+  assert.equal(tribs.length, goals.length);
   tribs.forEach((t, i) => {
     const start = river.tributaryPointAt(t.path, 0), end = river.tributaryPointAt(t.path, 1);
     assert.deepEqual(start.map((v) => +v.toFixed(4)), goals[i].map((v) => +v.toFixed(4)), '발원지는 목표 문구 자리');
@@ -390,11 +448,14 @@ test('config.river 지류·원근 설정이 유효하다', () => {
   assert.ok(typeof cfg.screen.readyText === 'string' && cfg.screen.readyText.length > 0);
 });
 
-test('시안 5컷: 달성한 목표 문구가 물길 위쪽에 남을 자리가 있다', () => {
+test('상단 물방울(모은 물) 자리가 물길 머리보다 위에 있다 — 지류가 거기서 흘러나온다', () => {
   const row = cfg.screen.goalRowTop;
-  assert.ok(typeof row === 'number' && row > 10 && row < 30, `문구 줄 위치(${row}vh)`);
+  assert.ok(typeof row === 'number' && row > 10 && row < 30, `상단 물방울 줄 위치(${row}vh)`);
   const riverTopY = river.pointAt(0) [1];
-  assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 문구 줄(${row}vh)보다 아래여야 문구를 관통하지 않는다`);
+  assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 상단 물방울 줄(${row}vh)보다 아래여야 한다`);
+  const bl = cfg.screen.bubbleLayout;
+  assert.deepEqual(bl.xCenters, [25, 50, 75], '스펙: x 중심 270/540/810');
+  assert.ok(bl.top > 28 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 y550~1000 띠 안(스펙)');
 });
 
 test('숲 배치: 나무가 물길을 침범하지 않고 양옆에 선다 (시안 5·6컷)', () => {
@@ -652,4 +713,11 @@ test('외부 이미지 자산은 라이선스가 문서로 남아 있다', () =>
   for (const r of rows) {
     assert.ok(/Public domain|CC0/i.test(r), `상업적 사용이 보장되지 않는 라이선스: ${r.slice(0, 80)}`);
   }
+});
+
+test('인쇄 예상시간 통계는 단면/양면을 따로 기록한다 (단면인데 양면 시간을 보여주지 않게)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'main.js'), 'utf8');
+  assert.match(src, /printSideKey/, '면 수 키가 없다');
+  assert.match(src, /return \{ duplex: s \}/, '옛 평면 통계는 양면으로 옮겨야 한다(전부 양면 측정이었다)');
+  assert.match(src, /all\[key\] = \{ lastMs/, '기록이 면 수별 슬롯에 들어가지 않는다');
 });

@@ -102,6 +102,18 @@ function createParticles() {
         list.push({ kind: 'fly', x0: from.x + rnd(-40, 40), y0: from.y + rnd(-40, 40), x1: to.x, y1: to.y, bend: rnd(-160, 160), r: rnd(6, 13), life: dur, t: -i * 0.02, color });
       }
     },
+    // 물 알갱이 모임(클라이언트 스펙 2026-09-06 6번): 터진 물방울에서 알갱이 n개가 베지어 곡선으로 상단 도착점까지 간다.
+    // 지름 12~20px(1080 기준 → r 6~10 × scale), 700ms easeInOutQuad(=easeInOut), 알갱이마다 stagger 씩 늦게 출발.
+    // 도착하면 onArrive(i) 를 부르고 제거된다 — 상단에 맺히는 작은 물방울은 호출자가 그린다(영구 상태라 파티클이 아니다).
+    collect(from, to, color, n, opts) {
+      const o = opts || {}, dur = o.dur || 0.7, stagger = o.stagger == null ? 0.04 : o.stagger, s = o.scale || 1;
+      const r0 = (o.r && o.r[0]) || 6, r1 = (o.r && o.r[1]) || 10;
+      const count = n || 6;
+      for (let i = 0; i < count; i++) {
+        list.push({ kind: 'collect', x0: from.x + rnd(-10, 10) * s, y0: from.y + rnd(-10, 10) * s, x1: to.x, y1: to.y,
+          bend: rnd(-90, 90) * s, r: rnd(r0, r1) * s, life: dur, t: -i * stagger, color, idx: i, onArrive: o.onArrive });
+      }
+    },
     // 물 스플래시 — 물방울을 터뜨린 순간(시안 3컷). 위로 솟는 물기둥 + 사방 물보라 + 퍼지는 링 2겹
     splash(x, y, color, scale) {
       const s = scale || 1;
@@ -161,7 +173,11 @@ function createParticles() {
         const p = list[i]; p.t += dt;
         if (p.t < 0) continue;
         if (p.kind === 'flow') { if (p.t >= p.life) p.t = 0; continue; }  // 지류 방울은 사라지지 않고 계속 흐른다
-        if (p.t >= p.life) { list.splice(i, 1); continue; }
+        if (p.t >= p.life) {
+          list.splice(i, 1);
+          if (p.kind === 'collect' && typeof p.onArrive === 'function') { try { p.onArrive(p.idx, p.x1, p.y1); } catch (e) { /* 호출자 오류가 파티클 루프를 멈추면 안 된다 */ } }
+          continue;
+        }
         if (p.kind === 'drop' || p.kind === 'star') { p.x += p.vx * dt; p.y += p.vy * dt; if (p.g) p.vy += p.g * dt; }
         else if (p.kind === 'ring' || p.kind === 'wake') { p.r += p.vr * dt; }
       }
@@ -174,6 +190,13 @@ function createParticles() {
         if (p.kind === 'drop') { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 - k * 0.5), 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.28, 0, Math.PI * 2); ctx.fill(); }
         else if (p.kind === 'ring' || p.kind === 'wake') { ctx.strokeStyle = p.color; ctx.lineWidth = p.w; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.stroke(); }
         else if (p.kind === 'fly') { const e = easeInOut(k); const mx = (p.x0 + p.x1) / 2 + p.bend, my = (p.y0 + p.y1) / 2 - Math.abs(p.bend); const x = (1 - e) * (1 - e) * p.x0 + 2 * (1 - e) * e * mx + e * e * p.x1, y = (1 - e) * (1 - e) * p.y0 + 2 * (1 - e) * e * my + e * e * p.y1; ctx.globalAlpha = 0.95; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, p.r, 0, Math.PI * 2); ctx.fill(); }
+        else if (p.kind === 'collect') {
+          const e = easeInOut(k);
+          const mx = (p.x0 + p.x1) / 2 + p.bend, my = (p.y0 + p.y1) / 2;
+          const x = (1 - e) * (1 - e) * p.x0 + 2 * (1 - e) * e * mx + e * e * p.x1, y = (1 - e) * (1 - e) * p.y0 + 2 * (1 - e) * e * my + e * e * p.y1;
+          ctx.globalAlpha = 0.95; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, p.r, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(x - p.r * 0.3, y - p.r * 0.3, p.r * 0.3, 0, Math.PI * 2); ctx.fill();
+        }
         else if (p.kind === 'flow') {
           const [fx, fy] = p.path(p.t / p.life);
           ctx.globalAlpha = Math.min(1, Math.sin((p.t / p.life) * Math.PI) * 1.6);
@@ -187,14 +210,27 @@ function createParticles() {
 }
 
 // 효과음 — 파일 없이 WebAudio로 합성 (팝/틱/셔터/차임/휘익). enabled=false면 전부 무음.
-function createSound(enabled) {
+// samples: { pop: HTMLAudioElement } 처럼 파일 효과음을 넘기면 그 키는 파일을 재생한다(없으면 합성음).
+// 요소는 시작 때 한 번 4개로 복제해 돌려쓴다 — 터치마다 복제·재로드하면 느린 디스크에서 소리가 늦고 24시간 동안 요소가 쌓인다.
+function createSound(enabled, samples, volume) {
   let ctx = null;
+  const S = samples || {}, vol = volume == null ? 1 : Math.max(0, Math.min(1, volume));
+  const pool = {}, POOL_N = 4;
+  const play = (key) => {
+    const a = S[key]; if (!enabled || !a) return false;
+    try {
+      if (!pool[key]) { pool[key] = { i: 0, els: Array.from({ length: POOL_N }, () => { const c = a.cloneNode(true); c.preload = 'auto'; try { c.load(); } catch (e) { /* noop */ } return c; }) }; }
+      const q = pool[key], c = q.els[q.i]; q.i = (q.i + 1) % q.els.length;
+      c.volume = vol; try { c.currentTime = 0; } catch (e) { /* 아직 로드 전 */ }
+      c.play().catch(() => {}); return true;
+    } catch (e) { return false; }
+  };
   const ac = () => { if (!enabled) return null; if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } } if (ctx.state === 'suspended') ctx.resume(); return ctx; };
   const tone = (f0, f1, dur, type, gain) => { const c = ac(); if (!c) return; const o = c.createOscillator(), g = c.createGain(); o.type = type || 'sine'; o.frequency.setValueAtTime(f0, c.currentTime); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), c.currentTime + dur); g.gain.setValueAtTime(gain || 0.18, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur); o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + dur); };
   const noise = (dur, gain) => { const c = ac(); if (!c) return; const buf = c.createBuffer(1, c.sampleRate * dur, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); const s = c.createBufferSource(); s.buffer = buf; const g = c.createGain(); g.gain.value = gain || 0.25; const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 1200; s.connect(f).connect(g).connect(c.destination); s.start(); };
   return {
     unlock() { ac(); },
-    pop() { tone(520, 180, 0.18, 'sine', 0.2); noise(0.06, 0.08); },
+    pop() { if (play('pop')) return; tone(520, 180, 0.18, 'sine', 0.2); noise(0.06, 0.08); },
     tick() { tone(880, 880, 0.08, 'square', 0.08); },
     go() { tone(660, 1320, 0.25, 'triangle', 0.18); },
     shutter() { noise(0.12, 0.35); tone(200, 60, 0.12, 'square', 0.12); },

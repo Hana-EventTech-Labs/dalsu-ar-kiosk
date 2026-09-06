@@ -66,18 +66,30 @@ const logFile = () => path.join(LOG_DIR, `kiosk-${today()}.log`);   // 매 기�
 // 인쇄 실제 소요 시간 기록. SMART-81D 는 60~90초가 걸리는데(라테일 실측) 정확한 값은 장비·리본·
 // 카드에 따라 다르다. 사람에게 재 달라고 하는 대신 앱이 스스로 재서 안내 문구를 맞춘다.
 const STATS_PATH = path.join(LOG_DIR, 'print-stats.json');
-function readPrintStats() {
-  try { const s = JSON.parse(fs.readFileSync(STATS_PATH, 'utf8')); return (s && s.count > 0) ? s : { count: 0 }; }
-  catch (e) { return { count: 0 }; }
+// 인쇄 소요 통계는 **면 수별**로 따로 둔다(2026-09-06 클라이언트 지적: 단면으로 바꿨는데 화면이 양면 때 잰 "약 95초"를 보여줬다).
+// 파일 형식 { single: {...}, duplex: {...} }. 예전 평면 형식({count, avgMs})은 전부 양면 측정이었으므로 duplex 로 옮긴다.
+const printSideKey = () => (config && config.card && config.card.printBack === true ? 'duplex' : 'single');
+function readAllPrintStats() {
+  try {
+    const s = JSON.parse(fs.readFileSync(STATS_PATH, 'utf8'));
+    if (s && typeof s === 'object' && ('single' in s || 'duplex' in s)) return s;
+    if (s && s.count > 0) return { duplex: s };          // 옛 형식 → 양면
+  } catch (e) { /* 없으면 빈 통계 */ }
+  return {};
+}
+function readPrintStats(side) {
+  const all = readAllPrintStats(), key = side || printSideKey();
+  const s = all[key];
+  return (s && s.count > 0) ? { ...s, side: key } : { count: 0, side: key };
 }
 function recordPrintMs(ms) {
   if (!(ms > 1000)) return;                      // dry-run 처럼 즉시 끝난 건 통계에 넣지 않는다
-  const s = readPrintStats();
+  const key = printSideKey(), all = readAllPrintStats(), s = all[key] || { count: 0 };
   // 최근 값에 무게를 둔 이동평균 — 리본 교체나 장비 상태 변화를 며칠씩 끌고 가지 않는다
   const avg = s.count ? Math.round(s.avgMs * 0.7 + ms * 0.3) : ms;
-  const next = { lastMs: ms, avgMs: avg, count: s.count + 1, updatedAt: new Date().toISOString() };
-  try { fs.writeFileSync(STATS_PATH, JSON.stringify(next, null, 2)); } catch (e) { /* 쓰기 실패는 무시 */ }
-  log('INFO', '인쇄 소요', { ms, avgMs: avg, 누적: next.count });
+  all[key] = { lastMs: ms, avgMs: avg, count: s.count + 1, updatedAt: new Date().toISOString() };
+  try { fs.writeFileSync(STATS_PATH, JSON.stringify(all, null, 2)); } catch (e) { /* 쓰기 실패는 무시 */ }
+  log('INFO', '인쇄 소요', { side: key, ms, avgMs: avg, 누적: all[key].count });
 }
 
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -113,7 +125,8 @@ function loadConfig() {
     }
   }
   // 필수 검증 — 잘못된 설정으로 현장에서 조용히 죽는 것 방지
-  if (!Array.isArray(c.goals) || c.goals.length !== 4) throw new Error('config.goals는 4개여야 합니다');
+  // 2026-09-06 클라이언트 확정: 물방울은 Reduce/Reuse/Restore 3개 (그 전 4개·2단계 구성은 폐기)
+  if (!Array.isArray(c.goals) || c.goals.length !== 3) throw new Error('config.goals는 3개여야 합니다 (Reduce/Reuse/Restore)');
   if (!['smart', 'dry-run'].includes(c.printer.mode)) throw new Error('config.printer.mode는 smart|dry-run');
   // CR-80 카드(Smart-31/51/81 공통). SDK 카드 좌표는 664×1040(세로) / 1040×664(가로).
   // 라테일 팝업스토어에서 이 값으로 SMART-81 양면 풀블리드 인쇄가 실측 확인됐다.
@@ -176,12 +189,17 @@ async function printCard(frontDataUrl, opts, onStage) {
   const dir = outDir(opts && opts.subdir);
   const base = `card-${stamp()}`;
   const front = dataUrlToFile(frontDataUrl, path.join(dir, `${base}-front.png`));
-  const backSrc = path.resolve(ROOT, config.card.backImage);
-  if (!fs.existsSync(backSrc)) throw new Error(`뒷면 이미지 없음: ${backSrc} (npm run assets)`);
-  // 배포본에서는 원본이 app.asar 안이라 외부 프로세스(DalsuPrint.exe)가 못 읽는다 → out/에 복사한 실파일을 인쇄에 넘긴다
-  const back = path.join(dir, `${base}-back.png`);
-  fs.copyFileSync(backSrc, back);
-  log('INFO', '카드 저장', { front, back });
+  // 뒷면은 옵셋으로 미리 인쇄한 카드를 쓴다(2026-09-06 확정) → 기본은 **앞면 단면 인쇄**. card.printBack:true 면 예전처럼 양면.
+  const duplex = config.card.printBack === true;
+  let back = null;
+  if (duplex) {
+    const backSrc = path.resolve(ROOT, config.card.backImage);
+    if (!fs.existsSync(backSrc)) throw new Error(`뒷면 이미지 없음: ${backSrc} (npm run assets)`);
+    // 배포본에서는 원본이 app.asar 안이라 외부 프로세스(DalsuPrint.exe)가 못 읽는다 → out/에 복사한 실파일을 인쇄에 넘긴다
+    back = path.join(dir, `${base}-back.png`);
+    fs.copyFileSync(backSrc, back);
+  }
+  log('INFO', duplex ? '카드 저장(양면)' : '카드 저장(단면 — 뒷면은 옵셋 사전 인쇄)', { front, back });
 
   if (config.printer.mode === 'dry-run') {
     log('INFO', 'dry-run 모드 — 실제 인쇄 생략');
@@ -191,14 +209,16 @@ async function printCard(frontDataUrl, opts, onStage) {
 
   const exe = resolvePrinterExe();
   if (!exe) throw new Error(`인쇄 CLI(DalsuPrint.exe)를 찾을 수 없습니다 — 설치 폴더를 확인하세요`);
-  const args = ['--front', front, '--back', back,
+  // --back 을 생략하면 DalsuPrint 가 PRTSIDE_FRONT(단면)로 인쇄한다(Program.cs). 뒷면 관련 인자는 양면일 때만.
+  const args = ['--front', front,
     config.card.orientation === 'portrait' ? '--portrait' : '--landscape',
     '--mode', config.printer.sdk === 'dcl' ? 'dcl' : 'comm'];
+  if (duplex) args.splice(2, 0, '--back', back);
   if (config.printer.deviceDesc) args.push('--printer', config.printer.deviceDesc);
   // 뒷면 회전 — 플리퍼가 카드를 뒤집는 축에 따라 실물에서 방향이 달라진다.
   // 현장에서 config.json 한 줄(card.backRotate)로 맞출 수 있어야 재빌드가 필요 없다.
   const rot = ((config.card.backRotate || 0) % 360 + 360) % 360;
-  if (rot) args.push('--back-rotate', String(rot));
+  if (duplex && rot) args.push('--back-rotate', String(rot));
 
   let lastErr = null;
   for (let attempt = 0; attempt <= (config.printer.retry || 0); attempt++) {
@@ -484,6 +504,17 @@ ipcMain.handle('print', async (_e, frontDataUrl, opts) => {
 ipcMain.handle('asset:swimMeta', () => {
   try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'dalsu-swim.json'), 'utf8')); }
   catch (e) { return null; }
+});
+// 범용 자산 메타(kiosk/assets/*.json 한정, 파일명 화이트리스트) — burst/bubble/idle-loop/card-frame 메타. 없으면 null.
+ipcMain.handle('asset:meta', (_e, name) => {
+  if (typeof name !== 'string' || !/^[a-z0-9-]+\.json$/.test(name)) return null;
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', name), 'utf8')); }
+  catch (e) { return null; }
+});
+// 자산 파일 존재 여부(kiosk/ 아래 상대경로만) — 선택적 영상(screen.riverVideo 등)을 쓰기 전에 확인한다
+ipcMain.handle('asset:exists', (_e, rel) => {
+  if (typeof rel !== 'string' || rel.includes('..') || path.isAbsolute(rel)) return false;
+  try { return fs.existsSync(path.join(ROOT, rel)); } catch (e) { return false; }
 });
 ipcMain.handle('snap', async (e, name) => {
   const win = BrowserWindow.fromWebContents(e.sender); if (!win) return null;

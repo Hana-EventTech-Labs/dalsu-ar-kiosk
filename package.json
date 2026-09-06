@@ -1,6 +1,6 @@
 {
   "name": "dalsu-ar-kiosk",
-  "version": "0.7.5",
+  "version": "0.8.0",
   "description": "삼성 달수 AR 포토카드 키오스크 (KIWW 2026, 대구 엑스코)",
   "private": true,
   "main": "kiosk/main.js",
@@ -20,7 +20,8 @@
     "assets:swim:plate": "python scripts/make-swim-plate.py",
     "record": "electron kiosk/main.js --record",
     "assets:water": "python scripts/make-water-tile.py",
-    "release": "electron-builder --win --publish always"
+    "release": "electron-builder --win --publish always",
+    "assets:client": "python scripts/import-client-assets.py"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -85,7 +86,11 @@
       "owner": "Hana-EventTech-Labs",
       "repo": "dalsu-ar-kiosk",
       "releaseType": "release"
-    }
+    },
+    "asarUnpack": [
+      "kiosk/assets/*.mp4",
+      "kiosk/assets/*.wav"
+    ]
   },
   "author": "Hana Platform <hanalabs@hanapf.kr>",
   "dependencies": {

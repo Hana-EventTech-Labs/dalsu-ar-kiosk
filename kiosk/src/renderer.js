@@ -36,7 +36,13 @@
   $('head-title').textContent = cfg.screen.headTitle;
   $('head-sub').textContent = cfg.screen.headSub || '';
   $('head-sub').hidden = !cfg.screen.headSub;   // 2026-09-03 부제 제거 요청 — 빈 문자열이면 칸째 숨긴다
-  $('idle-sub').textContent = cfg.screen.idleSubtitle;
+  // 물방울 단계 타이밍(클라이언트 스펙 2026-09-06 5·6번) — 기본값은 코드에 두고 config.timing.bubble 이 덮는다(현장 오버레이가 낡아도 동작)
+  const B = Object.assign({ pressMs: 80, burstMs: 1000, messageAtMs: 200, messageFadeMs: 200, collectAtMs: 150, collectMs: 700,
+    collectStaggerMs: 40, collectCount: 6, arriveMs: 200, holdMs: 500 }, (cfg.timing && cfg.timing.bubble) || {});
+  stage.style.setProperty('--press-ms', ms(B.pressMs) + 'ms');
+  stage.style.setProperty('--msg-at', ms(B.messageAtMs) + 'ms');
+  stage.style.setProperty('--msg-fade', ms(B.messageFadeMs) + 'ms');
+  const SCR = cfg.screen || {};
   $('guide-text').textContent = cfg.screen.guideText;
   $('countdown-text').textContent = cfg.screen.countdownText;
   $('preview-title').textContent = cfg.screen.previewTitle;
@@ -149,6 +155,96 @@
   }
   if (A.front) $('stage-dalsu').src = A.front.src; else $('stage-dalsu').style.display = 'none';
 
+  // ---------- 클라이언트 UI 자산 (2026-09-06 [최종 1차] 자료) — 전부 선택적. 없으면 예전 동작으로 폴백 + WARN. 무인 키오스크는 멈추지 않는다 ----------
+  // 물방울 PNG(아이콘 내장) — 없으면 art.js 벡터 물방울 + 아이콘
+  A.bubble = {}; A.bubbleMeta = null;
+  for (const g of cfg.goals) { if (g.image) { const im = await img('../' + g.image); if (im) A.bubble[g.key] = im; } }
+  try { A.bubbleMeta = await window.kiosk.assetMeta('bubble.json'); } catch (e) { A.bubbleMeta = null; }
+  // 터짐 스프라이트 시트(검정 배경 영상을 루마키한 것). 메타의 drop(정지 물방울 bbox)로 화면 물방울에 정확히 겹친다.
+  // VP9 알파 <video> 를 안 쓰는 이유: 알파 VP9 는 GPU 와 무관하게 소프트웨어 디코드(1440² 24fps 프레임당 15~25ms)라 GPU 없는 현장 PC 에서 물 연출과 겹치면 프레임이 밀린다.
+  A.burst = null; A.burstMeta = null; A.burstScale = 1;
+  try {
+    const m = await window.kiosk.assetMeta('burst.json');
+    const sheet = m ? await img('../assets/' + (m.sheet || 'burst.png')) : null;
+    const ok = !!(m && sheet && sheet.naturalWidth === m.sheetW && sheet.naturalHeight === m.sheetH
+      && m.cols * m.cellW === m.sheetW && m.rows * m.cellH === m.sheetH && m.frames > 0 && m.frames <= m.cols * m.rows
+      && m.drop && m.drop.w > 0 && m.drop.h > 0 && m.fps > 0);
+    if (ok) { A.burstMeta = m; A.burst = makeBurstSheet(sheet, m); }
+    else if (m || sheet) log('WARN', '터짐 시트가 메타와 맞지 않음 — 파티클 스플래시로 폴백', { meta: !!m, sheet: !!sheet });
+  } catch (e) { log('WARN', '터짐 시트 로드 실패 — 파티클 스플래시로 폴백', { error: String(e) }); }
+  // 터짐 효과음(WAV) — file:// 에서는 fetch 가 안 되므로 <audio> 로. 없으면 합성음(motion.js).
+  const sfxEl = $('sfx-burst'); let sfxOk = false;
+  if (sfxEl && !SMOKE) {
+    sfxEl.src = '../assets/burst-sfx.wav';
+    sfxOk = await new Promise((r) => { const t = setTimeout(() => r(false), 3000); sfxEl.oncanplaythrough = () => { clearTimeout(t); r(true); }; sfxEl.onerror = () => { clearTimeout(t); r(false); }; sfxEl.load(); });
+  }
+  // 배경 JPG(하늘·구름) — 영상 포스터이자 폴백 배경
+  const bgImg = $('bg-img');
+  if (SCR.idleBg && bgImg) { const im = await img('../' + SCR.idleBg); if (im) { bgImg.src = im.src; stage.dataset.bgImg = 'on'; } }
+  // 달수 대기 루프 영상(배경 포함). IDLE/GUIDE 에서만 재생. 실패하면 예전 PNG 달수.
+  const idleVideo = $('idle-video'); let idleVideoOk = false;
+  if (SCR.idleVideo && idleVideo) {
+    idleVideo.src = '../' + SCR.idleVideo; if (bgImg && bgImg.src) idleVideo.poster = bgImg.src;
+    idleVideoOk = await new Promise((r) => { const t = setTimeout(() => r(false), 4000); idleVideo.oncanplay = () => { clearTimeout(t); r(true); }; idleVideo.onerror = () => { clearTimeout(t); r(false); }; idleVideo.load(); });
+    stage.dataset.idleVideo = idleVideoOk ? 'on' : 'off';
+    idleVideo.onerror = () => { if (idleVideoOk) { idleVideoOk = false; stage.dataset.idleVideo = 'off'; log('ERROR', '대기 영상 오류 — PNG 달수로 폴백'); } };
+  }
+  // 타이틀 그래픽(검정 키잉한 PNG) — 있으면 h1 텍스트 대신. 없으면 텍스트 그대로.
+  if (SCR.titleImage) {
+    const im = await img('../' + SCR.titleImage);
+    if (im) { $('head-title-img').src = im.src; $('head').classList.add('img'); }
+    else log('WARN', '타이틀 그래픽 없음 — 텍스트 타이틀', { src: SCR.titleImage });
+  }
+  // 물길 영상 메타(첫 프레임 물방울 3개 위치) — 상단 알갱이 도착점 기본값
+  A.riverMeta = null; try { A.riverMeta = await window.kiosk.assetMeta('river.json'); } catch (e) { A.riverMeta = null; }
+  // 포토카드 앞면 프레임(가운데 투명 구멍) — 있으면 카드 = 사진(구멍) + 프레임. 없으면 예전 자연·달수 합성.
+  // card.frameImage 로 고른다(card-frame.png = 인쇄스크린_인쇄디자인 / card-frame-demo.png = 데모 영상의 달수 앞면). 메타는 같은 이름의 .json.
+  A.cardFrame = null; A.cardFrameHole = null;
+  if (cfg.card && cfg.card.frameImage) {
+    const im = await img('../' + cfg.card.frameImage);
+    if (!im) log('WARN', '카드 프레임 없음 — 예전 자연·달수 합성', { src: cfg.card.frameImage });
+    else if (Math.abs(im.width / im.height - cfg.card.width / cfg.card.height) > 0.02) log('WARN', '카드 프레임 비율이 카드와 다름 — 쓰지 않는다', { frame: `${im.width}x${im.height}`, card: `${cfg.card.width}x${cfg.card.height}` });
+    else {
+      const metaName = String(cfg.card.frameImage).split('/').pop().replace(/\.png$/i, '.json');
+      let m = null; try { m = await window.kiosk.assetMeta(metaName); } catch (e) { m = null; }
+      const hole = (m && m.hole && m.hole.w > 0 && m.hole.h > 0) ? m.hole : measureHole(im);
+      if (hole) { A.cardFrame = im; A.cardFrameHole = hole; }
+      else log('WARN', '카드 프레임에 투명 구멍이 없음 — 예전 합성으로 폴백');
+    }
+  }
+  // 프레임의 투명 구멍(사진 자리) bbox 를 알파에서 직접 잰다 — 메타가 없을 때의 폴백
+  function measureHole(im) {
+    try {
+      const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+      const c = cv.getContext('2d'); c.drawImage(im, 0, 0);
+      const d = c.getImageData(0, 0, cv.width, cv.height).data;
+      let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1, n = 0;
+      for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+        if (d[(y * cv.width + x) * 4 + 3] < 128) { n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      if (n < cv.width * cv.height * 0.05) return null;
+      return { x: x0 / cv.width, y: y0 / cv.height, w: (x1 - x0 + 1) / cv.width, h: (y1 - y0 + 1) / cv.height };
+    } catch (e) { return null; }
+  }
+  log('INFO', '클라이언트 UI 자산', { idleVideo: idleVideoOk, bg: stage.dataset.bgImg === 'on', bubbles: Object.keys(A.bubble).length,
+    burst: A.burst ? { frames: A.burstMeta.frames, scale: +A.burstScale.toFixed(2) } : null, sfx: sfxOk, title: $('head').classList.contains('img'),
+    cardFrame: A.cardFrame ? cfg.card.frameImage : null, hole: A.cardFrameHole, riverDrops: A.riverMeta ? A.riverMeta.drops : null });
+  // 터짐 시트를 화면에서 실제로 쓰는 크기로 **한 번만** 구워 둔다(헤엄 시트와 같은 이유 — PNG 직접 그리기는 첫 디코드가 PERF 를 오인시킨다)
+  function makeBurstSheet(sheet, m) {
+    const stageW = stage.clientWidth || 1080;
+    const wFrac = ((SCR.bubbleLayout && SCR.bubbleLayout.width) || 25) / 100;
+    const bodyFrac = A.bubbleMeta ? A.bubbleMeta.body.w / A.bubbleMeta.w : 417 / 450;
+    const bodyPx = stageW * wFrac * bodyFrac * (window.devicePixelRatio || 1);
+    const sc = Math.min(1, Math.max(0.25, bodyPx / m.drop.w));
+    A.burstScale = sc;
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(m.sheetW * sc)); cv.height = Math.max(1, Math.round(m.sheetH * sc));
+    const c = cv.getContext('2d'); c.imageSmoothingQuality = 'high';
+    c.drawImage(sheet, 0, 0, cv.width, cv.height);
+    c.drawImage(cv, 0, 0, 1, 1, 0, 0, 1, 1);
+    return cv;
+  }
+
   // ---------- 카메라 (실패/스모크 시 모의 프레임) ----------
   let frameSource = null; // HTMLVideoElement | HTMLCanvasElement
   const mock = document.createElement('canvas'); mock.width = cfg.camera.width; mock.height = cfg.camera.height;
@@ -194,6 +290,7 @@
 
   // ---------- 상태 ----------
   const flow = createFlow(cfg.goals.map((g) => g.key));
+  let riverVideoOk = false, riverVideoMs = 0;   // screen.riverVideo 훅 — 아래 자산 확인 뒤 세팅
   let timers = [];
   const later = (fn, d) => { const t = setTimeout(fn, ms(d)); timers.push(t); return t; };
   const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
@@ -202,11 +299,24 @@
     stage.dataset.state = flow.state;
     lastStateAt = performance.now(); lastStateName = flow.state;
     try { if (window.kiosk.reportState) window.kiosk.reportState(flow.state); } catch (e) { /* noop */ }
+    syncIdleVideo();
+  }
+  // 대기 영상은 IDLE/GUIDE 에서만 돈다. 그 밖에서는 페이드(.4s)가 끝난 뒤 **멈춘다** — 숨은 영상도 디코드하면 GPU 없는 PC 에서 강 연출 프레임을 먹는다.
+  function syncIdleVideo() {
+    if (!idleVideoOk) return;
+    const on = flow.state === STATES.IDLE || flow.state === STATES.GUIDE;
+    if (on) {
+      idleVideo.muted = !(cfg.sound && cfg.sound.enabled) || SMOKE;
+      idleVideo.volume = Math.max(0, Math.min(1, (cfg.sound && cfg.sound.idleVolume != null) ? cfg.sound.idleVolume : 0.6));
+      if (idleVideo.paused) idleVideo.play().catch((e) => { idleVideoOk = false; stage.dataset.idleVideo = 'off'; log('WARN', '대기 영상 재생 실패 — PNG 달수로 폴백', { error: String(e) }); });
+    } else {
+      setTimeout(() => { if (flow.state !== STATES.IDLE && flow.state !== STATES.GUIDE && !idleVideo.paused) idleVideo.pause(); }, 450);
+    }
   }
   // 데드맨 스위치 — 어떤 상태에서든 연출이 멈추면 무인 키오스크가 영원히 정지한다.
   // idleReturnMs 는 GUIDE에서만 동작하므로 그 밖의 상태를 이걸로 덮는다.
   const STATE_BUDGET_MS = () => ({
-    RIVER: T.achieveMs + T.riverFormMs, NATURE: T.natureMs, SWIM: T.swimMs,
+    RIVER: riverVideoOk ? riverVideoMs + 3000 : T.achieveMs + T.riverFormMs, NATURE: T.natureMs, SWIM: T.swimMs,
     COUNTDOWN: (T.readyMs || 0) + (T.countdownSec + 2) * 1000, CAPTURE: 8000,
     // 미리보기는 인쇄가 끝날 때까지다 → 프린터 타임아웃 × (재시도+1) 을 예산으로 잡는다.
     // 예전처럼 previewMs 로 잡아 두면 인쇄가 느릴 때 정상 동작 중에 대기 화면으로 튕긴다.
@@ -229,65 +339,71 @@
   // 도착 진행도. 기획 7번은 '중앙(0.5) 도착'이었지만 "끝까지 내려오게" 요청(2026-09-01)으로 화면 아래(u=0.82, y≈0.92)까지 간다.
   // 카드·물고기 회피·카메라 추종이 전부 이 값을 본다 — 0.5 를 하드코딩하지 말 것.
   const ARRIVE_U = Math.min(0.95, Math.max(0.3, (cfg.swim && cfg.swim.arriveU) || 0.5));
-  const anim = { wake: [], riverProgress: 0, natureCount: 0, swimU: -1, swimP: 0, face: 1, tilt: 0, enter: 0, life: 0, arFade: 1, camOut: 0, cam: { zoom: 1, k: 0, hold: 1, x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 }, flow: 0, tribProgress: 0, tribFade: 0, mergeFlash: 0, t0: performance.now(), popped: [], lastWake: 0, sparkled: new Set() };
+  const anim = { wake: [], riverProgress: 0, natureCount: 0, swimU: -1, swimP: 0, face: 1, tilt: 0, enter: 0, life: 0, arFade: 1, camOut: 0, cam: { zoom: 1, k: 0, hold: 1, x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 }, flow: 0, tribProgress: 0, tribFade: 0, mergeFlash: 0, t0: performance.now(), bursts: [], topDrops: [], topDropFade: 1, lastWake: 0, sparkled: new Set() };
   const particles = createParticles();
-  const sound = createSound(!!(cfg.sound && cfg.sound.enabled) && !SMOKE);
+  const sound = createSound(!!(cfg.sound && cfg.sound.enabled) && !SMOKE, sfxOk ? { pop: sfxEl } : null, cfg.sound && cfg.sound.sfxVolume);
 
-  // ---------- 물방울 (시안 1~4컷: 가로 1열, 눈물방울, 터치하면 그 자리에 목표 문구가 남는다) ----------
-  const DROP_W = 21, DROP_GAP = 2.4;                                  // cqw (무대 폭 기준)
-  const DROP_TOP = 28;   // cqh. 지류가 목표 문구 아래에서 흘러나올 공간 확보                                                // vh
-  // 2026-09-03 클라이언트 요청: 첫 화면에는 Reduce/Reuse/Recycle 3개만. 셋을 다 누르면 그 문구가 상단 줄로 올라가고
-  // 4번째 Return 물방울이 가운데 나타난다(`goals[].stage: 2`). Return 을 누르면 4개 문구가 상단 한 줄에 서고 4줄기 합류가 이어진다.
-  // 물방울 자리는 **같은 단계 안에서** 가운데 정렬하고, 상단 줄 슬롯은 4개 전부를 한 줄로 배치한 x 다.
-  const stageOf = (g) => g.stage || 1;
-  const rowSlots = (n) => { const total = n * DROP_W + (n - 1) * DROP_GAP; return Array.from({ length: n }, (_, i) => (100 - total) / 2 + i * (DROP_W + DROP_GAP)); };
-  const POS = (() => {
-    const byStage = {}; cfg.goals.forEach((g) => { (byStage[stageOf(g)] = byStage[stageOf(g)] || []).push(g); });
-    return cfg.goals.map((g) => {
-      const list = byStage[stageOf(g)], slots = rowSlots(list.length);
-      return [slots[list.indexOf(g)], DROP_TOP];                        // [cqw, cqh]
-    });
-  })();
-  const ROW_X = rowSlots(cfg.goals.length).map((x) => x + DROP_W / 2);   // 상단 줄에서 각 문구의 중심 x (cqw)
-  const HAS_STAGE2 = cfg.goals.some((g) => stageOf(g) > 1);
-  let stage2Shown = false;
+  // ---------- 물방울 3개 (클라이언트 스펙 2026-09-06: IDLE 부유 → PRESS → BURST → MESSAGE → COLLECT → COMPLETE) ----------
+  // 위치는 config.screen.bubbleLayout — 1080×1920 기준 x 중심 270/540/810, 크기 약 300×400, y 550~1000.
+  // "실제 배치는 영상 첫 프레임 정합을 우선으로 조정"(스펙 4번)이라 코드 상수가 아니라 config 다. 기본값은 코드에.
+  const BL = Object.assign({ xCenters: null, top: 30.5, width: 25 }, SCR.bubbleLayout || {});
+  const NG = cfg.goals.length;
+  const bubbleCenterX = (i) => (Array.isArray(BL.xCenters) && BL.xCenters[i] != null) ? BL.xCenters[i] : ((i + 1) * 100 / (NG + 1));   // cqw
+  const BUBBLE_ASPECT = A.bubbleMeta ? A.bubbleMeta.h / A.bubbleMeta.w : 630 / 450;
+  const BUBBLE_H = BL.width * BUBBLE_ASPECT;                                 // cqw 단위 높이(박스 = PNG 비율)
+  // 몸체(투명 여백 제외) — 터짐 시트의 물방울을 화면 물방울에 정확히 겹치는 기준
+  const BODY = A.bubbleMeta ? A.bubbleMeta.body : { x: 16, y: 19, w: 417, h: 592 };
+  const BODY_W_FRAC = BODY.w / (A.bubbleMeta ? A.bubbleMeta.w : 450);
+  const BODY_CY_FRAC = (BODY.y + BODY.h / 2) / (A.bubbleMeta ? A.bubbleMeta.h : 630);
+  // 상단 도착점(정규화 [x,y]) — 클라이언트 영상 첫 프레임의 물방울 자리(screen.collectTargets)가 있으면 그것,
+  // 없으면 물방울 x 중심 × goalRowTop. 지류도 여기서 시작한다("모은 물이 물길이 된다").
+  function collectTargets() {
+    const valid = (ct) => Array.isArray(ct) && ct.length >= NG && ct.every((q) => Array.isArray(q) && q.length >= 2);
+    const ct = valid(SCR.collectTargets) ? SCR.collectTargets : (riverVideoOk && A.riverMeta && valid(A.riverMeta.drops) ? A.riverMeta.drops : null);
+    if (ct) return cfg.goals.map((_, i) => [+ct[i][0], +ct[i][1]]);
+    const rowY = (SCR.goalRowTop == null ? 22 : SCR.goalRowTop) / 100;
+    return cfg.goals.map((_, i) => [bubbleCenterX(i) / 100, rowY]);
+  }
   function buildBubbles() {
     $('guide-text').style.opacity = '';
-    document.querySelectorAll('.bubble .done').forEach((el) => { el.style.animation = ''; el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; });
     const wrap = $('bubbles'); wrap.innerHTML = '';
     cfg.goals.forEach((g, i) => {
       const b = document.createElement('div'); b.className = 'bubble'; b.dataset.key = g.key;
-      b.style.left = POS[i][0] + 'cqw'; b.style.top = POS[i][1] + 'cqh';
-      if (stageOf(g) > 1) b.classList.add('staged');                      // 앞 단계를 다 누르면 revealStage2 가 보인다
-      b.innerHTML = `${artDropSvg(i, ART_DROP_COLOR)}<div class="inner">${artIconSvg(g.icon, g.iconColor)}<div class="label"></div></div><div class="done"></div>`;
-      b.querySelector('.inner svg').classList.add('icon');
+      b.style.width = BL.width + 'cqw'; b.style.height = BUBBLE_H + 'cqw';
+      b.style.left = (bubbleCenterX(i) - BL.width / 2) + 'cqw'; b.style.top = BL.top + 'cqh';
+      b.style.animationDelay = (-i * 0.3) + 's';                              // 물방울별 위상 0.3초 오프셋(스펙 5번)
+      const pic = A.bubble[g.key];
+      b.innerHTML = (pic
+        ? `<div class="body"><img class="drop" alt=""><div class="label"></div></div>`
+        : `<div class="body">${artDropSvg(i, ART_DROP_COLOR)}<div class="inner">${artIconSvg(g.icon, g.iconColor)}<div class="label"></div></div></div>`)
+        + '<div class="done"></div>';
+      if (pic) { b.classList.add('png'); b.querySelector('img.drop').src = pic.src; }
+      else b.querySelector('.inner svg').classList.add('icon');
       b.querySelector('.label').textContent = g.label;
-      // 목표 문구는 어절 단위로 줄바꿈해 물방울 자리에 세로로 쌓는다 (시안 3~4컷)
+      // 목표 문구 — config 에 줄바꿈이 있으면 그 줄 그대로, 없으면 어절 단위로 세로 쌓기
       const done = b.querySelector('.done');
-      // config 에 줄바꿈 문자가 있으면 그 줄 그대로, 없으면 어절 단위로 나눈다
       (g.text.includes('\n') ? g.text.split('\n') : g.text.split(' ')).forEach((word, k) => {
         const line = document.createElement('div'); line.textContent = word;
-        if (k) line.style.marginTop = '.2vh';
+        if (k) line.style.marginTop = '.2cqh';
         done.appendChild(line);
       });
-      b.addEventListener('pointerdown', () => onBubble(g, b));
+      // PRESS(터치 다운 → 스쿼시) → BURST(터치 업). 취소되면 스쿼시만 푼다. 대기 화면에서 곧바로 누를 수 있다(별도 시작 터치 없음).
+      b.addEventListener('pointerdown', (e) => {
+        if (flow.state !== STATES.IDLE && flow.state !== STATES.GUIDE) return;
+        if (flow.poppedKeys.includes(g.key)) return;
+        try { if (e && e.pointerId != null && b.setPointerCapture) b.setPointerCapture(e.pointerId); } catch (x) { /* 합성 이벤트에는 포인터가 없다 */ }
+        sound.unlock();
+        b.classList.add('pressed');   // 눌림 상태는 물방울마다 따로 — 두 손가락이 두 물방울을 겹쳐 눌러도 각각 터진다
+        if (flow.state === STATES.IDLE && flow.start()) { setState(); resetIdleTimer(); log('INFO', '체험 시작'); }
+      });
+      b.addEventListener('pointerup', () => { if (!b.classList.contains('pressed')) return; b.classList.remove('pressed'); onBubble(g, b); });
+      b.addEventListener('pointercancel', () => b.classList.remove('pressed'));
+      b.addEventListener('pointerleave', () => b.classList.remove('pressed'));   // 캡처가 안 잡힌 포인터가 밖으로 나가면 눌림만 푼다
       wrap.appendChild(b);
     });
-    stage2Shown = false;
+    if (SCR.guideHand === false) $('guide-hand').style.display = 'none';   // 클라이언트 레이아웃표에는 손가락 커서가 없다 — 끌 수 있게
     $('guide-hand').style.opacity = .95;
     requestAnimationFrame(moveHand);   // 방금 만든 물방울의 레이아웃이 확정된 뒤에 배치
-  }
-  // 1단계(3개)를 다 누른 뒤: 그 문구들을 상단 줄로 올리고 Return 물방울을 가운데 띄운다
-  function revealStage2() {
-    if (stage2Shown || flow.state !== STATES.GUIDE) return;
-    stage2Shown = true;
-    raiseGoalTexts();
-    document.querySelectorAll('.bubble.staged').forEach((b) => { b.classList.remove('staged'); b.classList.add('reveal'); });
-    $('guide-text').style.opacity = '';   // "물방울을 터치해주세요" 를 다시 보여 준다
-    sound.chime();
-    requestAnimationFrame(moveHand);
-    if (SMOKE && scale >= 0.3) later(() => snap('stage2'), 700);
-    log('INFO', '2단계 물방울 표시', { keys: cfg.goals.filter((g) => stageOf(g) > 1).map((g) => g.key) });
   }
   // getBoundingClientRect()는 뷰포트 절대 좌표다. 캔버스(#fx)와 #stage 안의 요소는 '무대 좌표계'를 쓰므로
   // 무대의 좌상단 오프셋을 빼야 한다. 세로 키오스크에서는 오프셋이 0이라 티가 안 나지만,
@@ -297,56 +413,31 @@
     const b = stageBox(), r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2 - b.left, y: r.top + r.height * (yFrac == null ? 0.5 : yFrac) - b.top };
   }
+  // 부유 애니메이션(transform)의 영향을 받지 않는 **레이아웃 박스** 기준 중심 — 손가락 커서처럼 흔들리면 안 되는 것에 쓴다.
+  // #bubbles 가 #stage 를 꽉 채우므로 offsetLeft/Top 이 곧 무대 좌표다.
+  function elCenterLayout(el, yFrac) { return { x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop + el.offsetHeight * (yFrac == null ? 0.5 : yFrac) }; }
 
-  // 지류 발원지 = 상단 줄로 올라간 목표 문구의 '아래 끝'. 각 목표에서 물이 흘러나오는 그림이라
-  // 문구 위치와 어긋나면 "4개의 요소가 물줄기가 된다"는 연결이 끊긴다.
-  function goalSources() {
-    const W = fx.clientWidth, H = fx.clientHeight;
-    const rowY = H * ((cfg.screen.goalRowTop || 19) / 100);
-    return cfg.goals.map((g, i) => {
-      const bub = document.querySelector(`.bubble[data-key="${g.key}"]`);
-      const done = bub && bub.querySelector('.done');
-      // 문구는 raiseGoalTexts 가 상단 줄 슬롯(ROW_X)으로 옮겨 놓았다 — 물방울 자리(단계별 정렬)와 다르다
-      const cx = (ROW_X[i] / 100) * W;
-      const h = (done && done.scrollHeight ? done.scrollHeight : H * 0.10) * 0.72;
-      return [cx / W, (rowY + h / 2 + H * 0.015) / H];
-    });
-  }
-  // 시안 5컷: 달성한 4개 목표 문구는 **사라지지 않고** 상단에 한 줄로 올라가 남는다.
-  // ("4개의 목표가 모여 하나의 깨끗한 물길이 됩니다" — 4개가 보여야 그 문장이 성립한다)
-  // 원래 자리에 두면 완성된 S자 물길이 문구를 관통하므로, 물길이 시작되는 y 위쪽으로 올린다.
-  function raiseGoalTexts() {
-    const W = fx.clientWidth, H = fx.clientHeight;
-    const targetY = H * ((cfg.screen.goalRowTop || 17) / 100);
-    // 이미 터진(popped) 문구만 올린다. 아직 안 나온 2단계 물방울의 문구는 제자리에 남아 있어야 한다.
-    // 이동량은 **물방울(변형 없음) 중심** 기준으로 잰다 — 이미 올라간 문구를 다시 재면 transform 이 누적된다.
-    document.querySelectorAll('.bubble.popped').forEach((bub) => {
-      const i = cfg.goals.findIndex((g) => g.key === bub.dataset.key);
-      const el = bub.querySelector('.done'); if (!el || i < 0) return;
-      const c = elCenter(bub);
-      const dx = (ROW_X[i] / 100) * W - c.x, dy = targetY - c.y;
-      el.style.animation = 'none';   // doneIn 등장 애니메이션(fill:both)이 transform을 덮어쓰므로 먼저 해제
-      void el.offsetWidth;
-      el.style.transition = `transform ${ms(T.riverFormMs * 0.45)}ms cubic-bezier(.2,.8,.3,1)`;
-      el.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.72)`;
-    });
-  }
-  // 자연 회복 단계로 넘어가면 역할을 다했으므로 부드럽게 사라진다 (시안 6컷에는 문구가 없다)
+  // 지류 발원지 = 상단에 맺힌 작은 물방울(collectTargets). 여기서 물이 흘러나와야 "모은 물이 물길이 된다"가 성립한다.
+  function goalSources() { return collectTargets(); }
+  // 목표 문구는 터진 자리에 남았다가(스펙: 사라지지 않는다) 물길이 시작될 때 사라진다 —
+  // 제자리(y 30~50%)에 그대로 두면 물길 머리(y 0.36)가 문구를 관통한다. (클라이언트 영상이 오면 컷 전환이 이 자리를 대신한다)
   function fadeGoalTexts() {
     document.querySelectorAll('.bubble .done').forEach((el) => {
-      el.style.transition += `, opacity ${ms(600)}ms ease-out`;
+      el.style.animation = 'none';   // doneIn(fill:both)이 opacity 를 잡고 있으면 트랜지션이 먹지 않는다 — 먼저 푼다
+      void el.offsetWidth;
+      el.style.transition = `opacity ${ms(600)}ms ease-out`;
       el.style.opacity = '0';
     });
   }
   function moveHand() {
+    if (SCR.guideHand === false) return;
     const next = cfg.goals.findIndex((g) => !flow.poppedKeys.includes(g.key));
     const hand = $('guide-hand');
-    // 다 눌렀어도 숨기지 않는다. 가이드 단계가 끝나면 #guide 섹션째 사라지므로 그때 자연스럽게 없어진다.
+    // 다 눌렀어도 숨기지 않는다. 가이드 섹션이 넘어가면 그때 자연스럽게 없어진다.
     if (next < 0) return;
-    // 대상 물방울의 실제 위치를 재서 바로 아래에 붙인다 — 아이콘·라벨을 절대 덮지 않는다
     const el = document.querySelector(`.bubble[data-key="${cfg.goals[next].key}"]`);
-    if (!el || el.classList.contains('staged')) return;   // 아직 안 나온 2단계 물방울 — 나올 때 revealStage2 가 다시 부른다
-    const c = elCenter(el, 0.90);
+    if (!el) return;
+    const c = elCenterLayout(el, 0.80);   // 물방울 아래쪽 — 아이콘·라벨을 덮지 않고, 안내 문구(54.7%) 위
     hand.style.left = c.x + 'px';
     hand.style.top = c.y + 'px';
     hand.style.opacity = .95;
@@ -354,25 +445,42 @@
   function onBubble(goal, el) {
     const r = flow.popBubble(goal.key);
     if (!r.accepted) return;
-    el.classList.remove('reveal');   // 등장 애니메이션(fill:both)이 남아 있으면 dropPop 을 덮어써 물방울이 안 사라진다
-    el.classList.add('popped');
-    // 시안 3컷: 터진 자리에 물 스플래시
-    const c = elCenter(el, 0.45);
-    anim.popped.push({ ...c, color: goal.color });
-    const sc = Math.min(fx.clientWidth, fx.clientHeight) / 900;
-    particles.splash(c.x, c.y, goal.color, sc);          // 시안 3컷: 물기둥 + 물보라 + 파문
-    particles.sparkle(c.x, c.y, 12, '#ffffff', sc);
-    anim.mergeFlash = 0.35;                               // 화면 전체 미세 플래시
+    const W = fx.clientWidth, H = fx.clientHeight;
+    // 중심은 .popped 를 붙이기 **전에** 잰다 — 부유 오프셋이 포함된 '지금 보이는 자리'에서 터져야 한다
+    const c = elCenter(el, BODY_CY_FRAC);
+    const bodyW = el.offsetWidth * BODY_W_FRAC;
+    el.classList.remove('pressed'); el.classList.add('popped');
+    // BURST: 시트가 있으면 영상 터짐(물방울 자리에 정확히), 없으면 파티클 스플래시
+    if (A.burst) anim.bursts.push({ x: c.x, y: c.y, bodyW, t0: performance.now(), key: goal.key });
+    else { const sc = Math.min(W, H) / 900; particles.splash(c.x, c.y, goal.color, sc); particles.sparkle(c.x, c.y, 12, '#ffffff', sc); }
+    anim.mergeFlash = 0.2;
     sound.pop();
     moveHand();
-    $('guide-text').style.opacity = 0; // 시안 3컷부터는 안내 문구 없이 목표 문구만
+    // COLLECT(스펙 6번): BURST +150ms 에 물 알갱이 5~6개가 상단 도착점으로 700ms, 40ms 간격. 도착하면 그 자리에 작은 물방울로 맺힌다.
+    const gi = cfg.goals.indexOf(goal), tgt = collectTargets()[gi];
+    later(() => {
+      const to = { x: tgt[0] * W, y: tgt[1] * H };
+      particles.collect({ x: c.x, y: c.y }, to, goal.color, B.collectCount, {
+        dur: ms(B.collectMs) / 1000, stagger: ms(B.collectStaggerMs) / 1000, scale: W / 1080, r: [6, 10],
+        onArrive: () => {
+          const d = anim.topDrops.find((t) => t.key === goal.key);
+          if (d) d.hits += 1;
+          else anim.topDrops.push({ key: goal.key, x: to.x, y: to.y, r: (W / 1080) * 19, color: goal.color, t0: performance.now(), hits: 1 });
+          // e2e: 마지막 물방울의 알갱이가 맺히기 시작하면(맺힘 200ms 뒤) 상단 물방울 3개가 실제 픽셀로 있는지 본다 — 시간 압축과 무관하게 도착 이벤트 기준
+          if (E2E && !e2eCollectArmed && anim.topDrops.length === cfg.goals.length) {
+            e2eCollectArmed = true;
+            setTimeout(() => { const r = verifyCollect(`${e2eCycle}번째 관람객`); if (!e2eCollect || e2eCollect.ok) e2eCollect = r; }, ms(B.arriveMs) + 30);
+          }
+        },
+      });
+    }, B.collectAtMs);
     log('INFO', '물방울', { key: goal.key, popped: r.popped });
-    if (r.allDone) later(runStory, T.goalTextMs); // 마지막 문구를 읽을 틈을 준 뒤 물길 연출
-    else {
-      resetIdleTimer();
-      const stage1Left = cfg.goals.some((g) => stageOf(g) === 1 && !flow.poppedKeys.includes(g.key));
-      if (HAS_STAGE2 && !stage1Left && !stage2Shown) later(revealStage2, T.goalTextMs);   // 3개 문구를 읽을 틈을 준 뒤
-    }
+    // COMPLETE: 마지막 터짐 → 버스트가 끝나고 홀드한 뒤 다음 구간(절차 연출 또는 클라이언트 영상)
+    if (r.allDone) {
+      // flow 는 이미 RIVER 다. 앞 관람객의 riverProgress/life 가 남아 있으면 홀드 1.5초 동안 완성된 강이 물방울 화면 위에 비친다(리뷰) — 지금 지운다.
+      const keep = anim.topDrops; resetSceneAnim(); anim.topDrops = keep; anim.topDropFade = 1;
+      later(runStory, B.burstMs + B.holdMs);
+    } else resetIdleTimer();
   }
 
   // ---------- 연출 ----------
@@ -383,21 +491,29 @@
   let tribs = [];
   let e2eResult = null;
   let e2eHand = null;
+  let e2eCollect = null, e2eCollectArmed = false;
   let lastResult = null, lastDataUrl = null;
-  function runStory() {
-    clearTimers(); setState(); // RIVER
-    $('story-text').textContent = cfg.screen.achieveText; $('story-text').style.display = '';
+  // 관람객이 바뀔 때 장면 상태를 되돌린다 — 절차 연출·영상 경로 둘 다 쓴다(안 되돌리면 두 번째 관람객의 영상 위에 완성된 강이 그려진다)
+  function resetSceneAnim() {
     tribShell = null;              // 관람객이 바뀌면 다시 자라야 한다
     anim.wake.length = 0;
     anim.riverProgress = 0; anim.natureCount = 0; anim.swimU = -1; anim.arFade = 1; anim.enter = 0; anim.life = 0;
     anim.face = 1; anim.tilt = 0; anim.arriveAt = 0; anim.flipAt = 0; vfPainted = false;
     anim.camOut = 0; Object.assign(anim.cam, { zoom: 1, k: 0, hold: 1, x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 });
     payoffIdx = -2; setPayoff(null);
-    anim.tribProgress = 0; anim.tribFade = 1; anim.mergeFlash = 0;
+    anim.tribProgress = 0; anim.tribFade = 1; anim.mergeFlash = 0; anim.topDropFade = 1;
     anim.t0 = performance.now(); anim.sparkled.clear();
+  }
+  // 물길 구간에 들어가면 남은 터짐 꼬리(시트 1.67s > 홀드 1.5s)는 지운다
+  function clearBursts() { anim.bursts.length = 0; }
+  function runStory() {
+    if (riverVideoOk) return runRiverVideo();   // 클라이언트 영상이 있으면 이 구간은 영상이 대신한다
+    clearTimers(); setState(); clearBursts(); // RIVER
+    $('story-text').textContent = cfg.screen.achieveText; $('story-text').style.display = '';
+    resetSceneAnim();
 
-    // 달성한 4개 문구를 상단 줄로 올린다 — 여기서 물줄기가 흘러나온다 (시안 5컷)
-    raiseGoalTexts();
+    // 문구는 여기서 사라진다(물길 머리가 관통하는 자리). 물줄기는 상단에 맺힌 작은 물방울 3개에서 흘러나온다.
+    fadeGoalTexts();
     const W0 = fx.clientWidth, H0 = fx.clientHeight;
     tribs = tributaries(goalSources(), pointAt(0));   // 물길 머리에서 하나로 뭉친다
 
@@ -409,19 +525,15 @@
         g ? g.color : '#00b3e3', 6, ms(T.achieveMs) / 1000, Math.min(W0, H0) / 540);
     });
     if (SMOKE && scale >= 0.3) later(() => snap('tributary'), T.achieveMs * 0.7);
-    if (E2E) {
-      later(async () => {                              // 자라는 도중
-        await snap('e2e-growing');
-        const r = verifyTributaries('자라는 중', true);
-        if (!r.ok) e2eResult = r;
-      }, T.achieveMs * 0.45);
-      later(async () => {                              // 다 자란 직후 = 합류 직전
-        await snap('e2e-tributary');
-        const r = verifyTributaries('합류 직전');
-        if (!e2eResult || e2eResult.ok) e2eResult = r;
-      }, T.achieveMs * 0.97);
-    }
-    animateValueRaw((p) => (anim.tribProgress = easeOut(p)), T.achieveMs, () => {
+    // e2e 검증은 타이머가 아니라 **진행도**에 건다. 세로 1080 소프트웨어 렌더에서는 첫 RIVER 프레임(캐시 굽기)이 100ms 를 넘겨
+    // 타이머 둘이 그리기 전에 연달아 튀었다(실제로 그랬다). 진행도 도달 뒤 두 프레임을 더 그린 시점에 캔버스를 읽고, 캡처는 그 뒤에.
+    let e2eGrow = !E2E, e2eFull = !E2E;
+    const afterFrames = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
+    animateValueRaw((p) => {
+      anim.tribProgress = easeOut(p);
+      if (!e2eGrow && p >= 0.45) { e2eGrow = true; afterFrames(async () => { const r = verifyTributaries('자라는 중', true); if (!r.ok) e2eResult = r; await snap('e2e-growing'); }); }
+      if (!e2eFull && p >= 0.97) { e2eFull = true; afterFrames(async () => { const r = verifyTributaries('합류 직전'); if (!e2eResult || e2eResult.ok) e2eResult = r; await snap('e2e-tributary'); }); }
+    }, T.achieveMs, () => {
       // ② 합류 — 4줄기가 각자의 자리에서 본류로 쏟아진다
       $('story-text').textContent = cfg.screen.riverText;
       const sc = Math.min(W0, H0) / 900;
@@ -441,7 +553,6 @@
         { const e = pointAt(1); particles.sparkle(e[0] * W0, e[1] * H0, 12, '#b3e8f6'); } sound.chime();
         flow.advance(); setState(); // NATURE — 달수가 물길 머리에 떠오른다 (자연은 달수가 지나가며 살아난다)
         animateValueRaw((p) => (anim.tribFade = 1 - p), 900, () => { anim.tribFade = 0; particles.clearFlow(); }); // 이제 본류에 흡수
-        fadeGoalTexts();
         $('story-text').textContent = cfg.screen.natureText;
         if (SMOKE && scale >= 0.3) later(() => snap('nature'), T.natureMs * 0.7);
         { const e = pointAt(0); particles.splash(e[0] * W0, e[1] * H0, '#b3e8f6', Math.min(W0, H0) / 1400); }
@@ -483,6 +594,32 @@
       });
     });
   }
+  // ---------- 클라이언트 영상 훅 (screen.riverVideo) ----------
+  // 물방울 3개 뒤 구간(강·자연·헤엄)을 클라이언트가 만든 영상으로 대체한다. 파일이 실제로 있을 때만 켜지고(기동 시 확인),
+  // 재생이 실패하면 촬영 준비로 넘어간다. 스모크·녹화에서는 쓰지 않는다(시간 압축과 안 맞고, 결정적이어야 한다).
+  function runRiverVideo() {
+    clearTimers(); setState(); clearBursts(); // RIVER
+    resetSceneAnim();           // riverProgress=0 → fx 는 강·자연을 그리지 않는다(영상 위에 겹치면 안 된다)
+    $('story-text').style.display = 'none';
+    fadeGoalTexts();
+    later(() => animateValueRaw((p) => (anim.topDropFade = 1 - p), 400, () => { anim.topDropFade = 0; }), 300);
+    stage.dataset.riverVideo = 'playing';
+    riverVideo.muted = !(cfg.sound && cfg.sound.enabled);
+    try { riverVideo.currentTime = 0; } catch (e) { /* 아직 메타 전 */ }
+    let ended = false;
+    const finishVideo = (why) => {
+      if (ended) return; ended = true;
+      stage.dataset.riverVideo = 'off'; try { riverVideo.pause(); } catch (e) { /* noop */ }
+      log(why === 'ended' ? 'INFO' : 'WARN', '물길 영상 종료', { why });
+      // NATURE → SWIM 을 지나 COUNTDOWN 으로 (SWIM 이 끝났을 때와 같은 경로). 장면(강·자연)은 만들지 않았으므로 촬영 화면에 겹칠 것도 없다.
+      flow.advance(); flow.advance();
+      flow.advance(); setState(); runCountdown();
+    };
+    riverVideo.onended = () => finishVideo('ended'); riverVideo.onerror = () => finishVideo('error');
+    if (SMOKE && scale >= 0.3) { later(() => snap('rivervideo'), 1500); later(() => snap('rivervideo2'), Math.max(1600, riverVideoMs * 0.7)); }
+    riverVideo.play().catch((e) => { log('ERROR', '물길 영상 재생 실패', { error: String(e) }); finishVideo('play-reject'); });
+    later(() => finishVideo('timeout'), riverVideoMs + 3000);   // 영상 길이 + 여유 뒤에도 안 끝났으면 강제 진행
+  }
   function animateValue(set, dur, done) {
     const d = ms(dur), s = performance.now();
     (function step(now) { const p = Math.min(1, (now - s) / d); set(easeOut(p)); if (p < 1) requestAnimationFrame(step); else done(); })(s);
@@ -507,11 +644,14 @@
     animateValueRaw((p) => (anim.camOut = easeOut(p)), Math.max(500, T.readyMs || 0), () => { anim.camOut = 1; });
     if (SMOKE && scale >= 0.3) later(() => snap('ready-pullout'), Math.max(500, T.readyMs || 0) * 0.45);
     setPayoff(null);                 // 촬영 화면으로 넘어가며 내린다
-    // 준비 여유 — 강을 보다가 곧바로 자기 얼굴이 뜨면 놀란 표정으로 찍힌다
+    // 준비 여유 — 강을 보다가 곧바로 자기 얼굴이 뜨면 놀란 표정으로 찍힌다. 데모(2026-09-06)처럼 준비 문구를 카메라 자리에 띄운다.
+    $('count-num').textContent = '';
+    $('countdown-text').textContent = cfg.screen.readyText || ''; $('countdown-text').hidden = !cfg.screen.readyText;
     later(() => { $('story-text').textContent = ''; $('story-text').style.display = 'none'; startTicks(); }, T.readyMs || 0);
   }
   function startTicks() {
     if (SMOKE && scale >= 0.3) later(() => snap('countdown'), 900);
+    $('countdown-text').textContent = cfg.screen.countdownText || ''; $('countdown-text').hidden = !cfg.screen.countdownText;
     let n = T.countdownSec; const el = $('count-num');
     (function tick() {
       el.textContent = n; el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
@@ -543,7 +683,7 @@
       // 기본 문구를 코드에 두고 config 가 있으면 덮어쓰게 한다 — 업데이트만으로 동작해야 한다.
       const STAGE_TEXT = Object.assign({
         start: '출력 준비 중이에요', connect: '프린터를 연결하고 있어요',
-        settings: '양면 인쇄를 설정하고 있어요', cardin: '카드를 넣고 있어요',
+        settings: '인쇄를 설정하고 있어요', cardin: '카드를 넣고 있어요',
         load: '사진을 프린터로 보내고 있어요', ribbon: '리본을 확인하고 있어요',
         print: '카드를 인쇄하고 있어요', eject: '카드가 나오고 있어요',
         retry: '다시 시도하고 있어요', done: '거의 다 됐어요',
@@ -569,6 +709,7 @@
       // 그 값으로 말한다(첫 인쇄 때는 숫자 없이 안내만). 사람이 재서 알려줄 필요가 없다.
       try {
         const st = window.kiosk.printStats ? await window.kiosk.printStats() : null;
+        // 통계는 면 수별(single/duplex)이다 — 단면으로 바꾼 뒤에도 양면 때 잰 시간을 보여주지 않는다
         if (st && st.count > 0 && st.avgMs > 3000) {
           const sec = Math.round(st.avgMs / 5000) * 5;    // 5초 단위로 뭉뚱그린다 — 정밀한 척하지 않는다
           STAGE_TEXT.print = `${STAGE_TEXT.print} (약 ${sec}초)`;
@@ -638,11 +779,20 @@
       st.style.setProperty('--vf-cam', (camH / st.clientHeight * 100).toFixed(2) + '%');
       st.style.setProperty('--cam-h', (camH / boxH * 100).toFixed(2) + '%');   // 틀 안 사진 띠 비율(아래 여백 시작점)
       vfBox = { x: (st.clientWidth - boxW) / 2, y: top, w: boxW, h: boxH, r: st.clientWidth * 0.024 };
+      // 프레임 모드(카드 앞면 = 사진 + 프레임 PNG): 라이브 카메라를 프레임의 투명 구멍 자리에만 띄운다(cover). 인쇄 크롭과 같다.
+      if (A.cardFrame && A.cardFrameHole) {
+        const h = A.cardFrameHole;
+        st.classList.add('vf-frame');
+        st.style.setProperty('--vf-cam-x', ((vfBox.x + h.x * boxW) / st.clientWidth * 100).toFixed(2) + '%');
+        st.style.setProperty('--vf-cam-y', ((top + h.y * boxH) / st.clientHeight * 100).toFixed(2) + '%');
+        st.style.setProperty('--vf-cam-w', (h.w * boxW / st.clientWidth * 100).toFixed(2) + '%');
+        st.style.setProperty('--vf-cam-h', (h.h * boxH / st.clientHeight * 100).toFixed(2) + '%');
+      } else st.classList.remove('vf-frame');
       vfPainted = false;                      // 오버레이는 촬영 화면 첫 프레임에 그린다(자산·카드가 다 준비된 뒤)
       return;
     }
     vfBox = null;
-    st.classList.remove('vf');
+    st.classList.remove('vf'); st.classList.remove('vf-frame');
     const pct = (st.clientWidth / (c.sw / c.sh)) / st.clientHeight * 100;
     st.style.setProperty('--cam-h', Math.min(100, Math.max(30, pct)).toFixed(2) + '%');
   }
@@ -655,6 +805,24 @@
     const o = opts || {}, src = frameSource;
     const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height;
     if (o.photo !== false && src === mock) drawMock(performance.now());
+    // 2026-09-06 클라이언트 앞면 디자인(card.frameImage): 프레임 PNG(가운데 투명 구멍) + 구멍에 사진(cover).
+    // 자연·달수·문구는 프레임 그림에 들어 있다. 구멍이 거의 정사각(0.94)이라 가로 웹캠을 훨씬 덜 확대한다(폭 52% 사용).
+    if (A.cardFrame && A.cardFrameHole) {
+      const hole = A.cardFrameHole;
+      const hx = Math.round(hole.x * W), hy = Math.round(hole.y * H), hw = Math.round(hole.w * W), hh = Math.round(hole.h * H);
+      if (o.photo !== false) {
+        // 인쇄본은 완전 불투명해야 한다 — 프레임 PNG 의 안티에일리어싱 가장자리(알파 131~254, 실측 5천 px)가 투명 캔버스 위에 남으면
+        // 프린터 SDK 가 알파를 어떻게 다룰지 보장이 없다. 흰 바탕을 먼저 깔고 사진·프레임을 올린다(오버레이는 라이브 영상 위라 그대로 투명).
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+        const cc = coverCrop(sw, sh, hw, hh);
+        ctx.save();
+        if (cfg.camera.mirror && src !== mock) { ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, cc.sx, cc.sy, cc.sw, cc.sh, W - hx - hw, hy, hw, hh); }
+        else ctx.drawImage(src, cc.sx, cc.sy, cc.sw, cc.sh, hx, hy, hw, hh);
+        ctx.restore();
+      }
+      ctx.drawImage(A.cardFrame, 0, 0, W, H);
+      return;
+    }
     // ① 사진. cover 로 꽉 채우면 가로 웹캠을 세로 카드에 맞추느라 인물이 2.8배로 확대된다 —
     //    photoZoom 으로 더 넓게 잘라 위쪽 띠로 앉히고, 남는 아래는 장면이 채운다.
     const c = photoCrop(sw, sh, W, H, cfg.card.photoZoom);
@@ -1372,7 +1540,7 @@
     if (st === 'RIVER' && anim.riverProgress > 0 && anim.riverProgress < 1 && Math.random() < 0.6) { const [hx, hy] = pointAt(anim.riverProgress); particles.sparkle(hx * W, hy * H, 1, '#ffffff'); }
     const onCam = st === 'COUNTDOWN' || st === 'CAPTURE';
     if (SMOKE && frameSource === mock && onCam) drawMock(now);   // 미리보기 스트림용
-    const fading = onCam && !AR_ON_CAMERA && anim.arFade > 0.01; // 촬영 화면으로 넘어가는 동안(뷰파인더면 옅게 계속)
+    const fading = onCam && !AR_ON_CAMERA && anim.arFade > 0.01 && anim.riverProgress > 0; // 촬영 화면으로 넘어가는 동안(뷰파인더면 옅게 계속). 영상 경로면 장면이 없다
     // 언덕과 숲 — 물길보다 먼저(뒤에) 그린다. 언덕은 물길이 완성되며, 나무는 자연 회복 단계에 자란다.
     if (st === 'RIVER' || st === 'NATURE' || st === 'SWIM' || fading) {
       const hp = st === 'RIVER' ? anim.riverProgress : 1;
@@ -1566,6 +1734,8 @@
       fxCtx.restore();
       if (Math.random() < dt * 14) particles.sparkle(hx * W, hy * H, 2, 'rgba(255,255,255,.95)');
     }
+    drawTopDrops(now, st);   // 상단에 맺힌 작은 물방울(모은 물) — 물길이 자라며 샘이 되어 사라진다
+    drawBursts(now);         // 물방울 터짐(스프라이트 시트)
     // 물보라·항적 방울은 월드 오브젝트라 카메라를 따라간다(대기 화면 방울은 줌이 1이라 그대로).
     const tP = performance.now(); particles.update(dt);
     fxCtx.save(); camApply(fxCtx, W, H, 1); particles.draw(fxCtx); fxCtx.restore();
@@ -1583,6 +1753,51 @@
       fxCtx.beginPath(); fxCtx.roundRect(b.x, b.y, b.w, b.h, b.r); fxCtx.fill(); fxCtx.restore();
     }
     if (st === 'RIVER' || st === 'NATURE' || st === 'SWIM') perfTick(rawDt);
+  }
+  // 터짐 시트: 경과 시간에서 프레임을 뽑는다(스모크 시간 압축 호환). 영상 속 정지 물방울(meta.drop)이 화면 물방울 몸체와 겹치도록 배율·앵커를 잡는다.
+  function drawBursts(now) {
+    if (!A.burst || !anim.bursts.length) return;
+    const m = A.burstMeta, s = A.burstScale;
+    const BC = Object.assign({ blend: 'source-over', gain: 1, shadow: 0 }, SCR.burst || {});
+    const frameMs = ms(1000 / m.fps);
+    for (let i = anim.bursts.length - 1; i >= 0; i--) {
+      const b = anim.bursts[i];
+      const f = Math.floor((now - b.t0) / frameMs);
+      if (f >= m.frames) { anim.bursts.splice(i, 1); continue; }
+      if (f < 0) continue;
+      const col = f % m.cols, row = Math.floor(f / m.cols);
+      const k = b.bodyW / m.drop.w;                                   // 영상 속 물방울 폭 → 화면 물방울 몸체 폭
+      const dw = m.cellW * k, dh = m.cellH * k;
+      const dx = b.x - (m.drop.x + m.drop.w / 2) * k, dy = b.y - (m.drop.y + m.drop.h / 2) * k;
+      const sx = col * m.cellW * s, sy = row * m.cellH * s, sw = m.cellW * s, sh = m.cellH * s;
+      fxCtx.save(); camReset(fxCtx);
+      if (BC.shadow > 0) { fxCtx.globalCompositeOperation = 'multiply'; fxCtx.globalAlpha = Math.min(1, BC.shadow); fxCtx.drawImage(A.burst, sx, sy, sw, sh, dx, dy, dw, dh); }
+      fxCtx.globalCompositeOperation = BC.blend || 'source-over';
+      fxCtx.globalAlpha = Math.max(0, Math.min(1, BC.gain == null ? 1 : BC.gain));
+      fxCtx.drawImage(A.burst, sx, sy, sw, sh, dx, dy, dw, dh);
+      fxCtx.restore();
+    }
+  }
+  // 상단 작은 물방울: 알갱이가 도착하면 scale 0→1(200ms)로 맺히고 남는다. RIVER 에서 지류가 자라는 동안 샘이 되어 사라진다.
+  function drawTopDrops(now, st) {
+    if (!anim.topDrops.length) return;
+    const fade = (st === 'IDLE' || st === 'GUIDE') ? anim.topDropFade
+      : st === 'RIVER' ? Math.max(0, 1 - anim.tribProgress * 2) * anim.topDropFade : 0;
+    if (fade <= 0.01) return;
+    fxCtx.save(); camReset(fxCtx);
+    for (const d of anim.topDrops) {
+      const k = Math.min(1, (now - d.t0) / ms(B.arriveMs));
+      const r = d.r * Math.max(0, easeOutBack(k)) * (1 + Math.min(0.5, (d.hits - 1) * 0.06));   // 알갱이가 더 오면 조금 커진다
+      if (r <= 0) continue;
+      fxCtx.globalAlpha = fade;
+      fxCtx.fillStyle = d.color;                                     // 눈물방울
+      fxCtx.beginPath(); fxCtx.moveTo(d.x, d.y - r * 1.5);
+      fxCtx.bezierCurveTo(d.x + r * 1.05, d.y - r * 0.1, d.x + r, d.y + r * 0.35, d.x, d.y + r);
+      fxCtx.bezierCurveTo(d.x - r, d.y + r * 0.35, d.x - r * 1.05, d.y - r * 0.1, d.x, d.y - r * 1.5); fxCtx.fill();
+      fxCtx.fillStyle = 'rgba(255,255,255,.8)';
+      fxCtx.beginPath(); fxCtx.ellipse(d.x - r * 0.35, d.y - r * 0.15, r * 0.2, r * 0.38, -0.35, 0, Math.PI * 2); fxCtx.fill();
+    }
+    fxCtx.restore();
   }
   requestAnimationFrame(fxLoop);
 
@@ -1651,6 +1866,37 @@
     return { ok: problems.length === 0, phase, problems, cols };
   }
 
+  // 물 알갱이가 상단 도착점에 맺혔는가 — 개수·좌표는 상태로, 보이는 동안이면 실제 픽셀까지 본다
+  function verifyCollect(phase) {
+    const W = fx.clientWidth, H = fx.clientHeight, problems = [];
+    const tg = collectTargets();
+    if (anim.topDrops.length !== cfg.goals.length) problems.push(`상단 물방울 ${anim.topDrops.length}개 (기대 ${cfg.goals.length})`);
+    let prevX = -1;
+    cfg.goals.forEach((g) => {
+      const d = anim.topDrops.find((t) => t.key === g.key);
+      if (!d) { problems.push(`'${g.label}' 알갱이가 도착하지 않음`); return; }
+      if (!(d.x > 0 && d.x < W && d.y > 0 && d.y < H * 0.35)) problems.push(`'${g.label}' 상단 물방울이 화면 위쪽 안에 없음 (${Math.round(d.x)},${Math.round(d.y)})`);
+      if (d.x <= prevX) problems.push(`'${g.label}' 상단 물방울이 왼→오 순서가 아님`); prevX = d.x;
+    });
+    // 보이는지는 drawTopDrops 와 같은 조건으로 판정 (RIVER 에서는 지류가 1/2 자라면 사라진다)
+    const st = flow.state, visible = anim.topDropFade > 0.5 && ((st === 'IDLE' || st === 'GUIDE') || (st === 'RIVER' && anim.tribProgress < 0.25));
+    let pix = null;
+    if (visible && problems.length === 0) {
+      try {
+        const im = fxCtx.getImageData(0, 0, W, H).data; pix = [];
+        cfg.goals.forEach((g, i) => {
+          const cx = Math.round(tg[i][0] * W), cy = Math.round(tg[i][1] * H), rad = Math.round(W * 0.02); let hit = 0;
+          for (let y = cy - rad; y <= cy + rad; y += 2) for (let x = cx - rad; x <= cx + rad; x += 2) {
+            if (x < 0 || y < 0 || x >= W || y >= H) continue; const k = (y * W + x) * 4;
+            if (im[k + 3] > 60 && im[k + 2] > im[k] + 12) hit++;
+          }
+          pix.push(hit); if (hit < 4) problems.push(`'${g.label}' 도착점에 물방울 픽셀이 없음 (hit=${hit})`);
+        });
+      } catch (e) { problems.push('픽셀 읽기 실패 ' + e); }
+    }
+    log(problems.length ? 'ERROR' : 'INFO', `e2e 물 알갱이 모임 [${phase}]`, { problems, pix, visible });
+    return { ok: problems.length === 0, phase, problems };
+  }
   // 손가락 커서가 실제로 보이는지 — 두 번째 관람객부터 안 보이는 사고를 잡는다
   function verifyGuideHand(phase) {
     const hand = $('guide-hand'), problems = [];
@@ -1679,7 +1925,10 @@
   function finish() {
     clearTimers(); flow.reset(); setState(); buildBubbles();
     $('preview-title').textContent = cfg.screen.previewTitle;   // 다음 관람객을 위해 되돌린다
-    $('preview-text').textContent = cfg.screen.previewText; anim.popped = []; particles.clear(); log('INFO', '체험 완료 → 대기');
+    $('preview-text').textContent = cfg.screen.previewText; anim.bursts = []; anim.topDrops = []; anim.topDropFade = 1; particles.clear(); e2eCollectArmed = false;
+    stage.dataset.riverVideo = 'off'; if (riverVideoOk) { try { riverVideo.pause(); } catch (e) { /* noop */ } }
+    if (idleVideoOk) { try { idleVideo.currentTime = 0; } catch (e) { /* noop */ } syncIdleVideo(); }
+    log('INFO', '체험 완료 → 대기');
     if (E2E && e2eCycle === 1) setTimeout(() => runSmokeCycle(2), 500);   // 두 번째 관람객
     if (SOAK && e2eCycle >= 1) {
       const m = performance.memory, mb = m ? +(m.usedJSHeapSize / 1048576).toFixed(1) : null;
@@ -1709,7 +1958,20 @@
   }
   let idleTimer = null;
   function resetIdleTimer() { clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (flow.state === 'GUIDE') finish(); }, ms(T.idleReturnMs)); }
-  $('idle').addEventListener('pointerdown', () => { sound.unlock(); if (flow.start()) { setState(); buildBubbles(); resetIdleTimer(); log('INFO', '체험 시작'); } });
+  // 물방울 이후 구간 영상 훅 — 파일이 실제로 있을 때만. 시간을 압축하는 스모크(speed<1)와 녹화에서는 절차 연출로 간다
+  // (영상은 실시간이라 압축과 안 맞는다). `--smoke-speed=1` 실시간 스모크는 영상 경로를 그대로 검증한다.
+  const riverVideo = $('river-video');
+  if (SCR.riverVideo && riverVideo && !(SMOKE && scale < 0.99) && !RECORD) {
+    try {
+      if (await window.kiosk.assetExists(SCR.riverVideo)) {
+        riverVideo.src = '../' + SCR.riverVideo;
+        riverVideoOk = await new Promise((r) => { const t = setTimeout(() => r(false), 5000); riverVideo.onloadedmetadata = () => { clearTimeout(t); r(riverVideo.duration > 0); }; riverVideo.onerror = () => { clearTimeout(t); r(false); }; riverVideo.load(); });
+        riverVideoMs = riverVideoOk ? Math.round(riverVideo.duration * 1000) : 0;
+      }
+      log(riverVideoOk ? 'INFO' : 'WARN', riverVideoOk ? '물길 영상 사용 — 강·자연·헤엄 절차 연출 대신 재생' : '물길 영상 없음/로드 실패 — 절차 연출', { src: SCR.riverVideo, ms: riverVideoMs });
+    } catch (e) { log('WARN', '물길 영상 확인 실패 — 절차 연출', { error: String(e) }); }
+  }
+  // 별도 '시작 터치'는 없다(2026-09-06 스펙) — 첫 물방울 pointerdown 이 곧 시작(buildBubbles 안).
   buildBubbles(); setState();
 
   // 프린터 프리플라이트 배너 (smart 모드에서 장비 미감지 시 대기화면에 표시, 30초마다 재확인)
@@ -1728,10 +1990,14 @@
     let ok = !!(result && result.ok) && card.width === cfg.card.width && card.height === cfg.card.height
       && typeof dataUrl === 'string' && dataUrl.length > 1000;
     const extra = {};
+    // 인쇄본에 반투명 픽셀이 있으면 실패 — 프레임 PNG 가장자리가 투명 캔버스 위에 남던 사고 재발 방지
+    try { const d = cardCtx.getImageData(0, 0, card.width, card.height).data; let tr = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 255) tr++; if (tr) { ok = false; extra.transparentPx = tr; } } catch (e) { /* noop */ }
     if (E2E) {                                          // 물줄기 검증을 통과해야 성공으로 친다
       if (!e2eResult) { ok = false; extra.e2e = '검증이 실행되지 않음'; }
       else { ok = ok && e2eResult.ok; extra.e2e = e2eResult.ok ? 'PASS' : e2eResult.problems; extra.cols = e2eResult.cols; }
       if (e2eHand && !e2eHand.ok) { ok = false; extra.hand = [e2eHand.phase, ...e2eHand.problems]; } else extra.hand = 'PASS';
+      if (!e2eCollect) { ok = false; extra.collect = '검증이 실행되지 않음'; }
+      else if (!e2eCollect.ok) { ok = false; extra.collect = [e2eCollect.phase, ...e2eCollect.problems]; } else extra.collect = 'PASS';
     }
     window.kiosk.smokeExit(ok, { mode: result && result.mode, front: result && result.front, error: result && result.error, card: `${card.width}x${card.height}`, ...extra });
   }
@@ -1749,17 +2015,19 @@
   async function runSmokeCycle(n) {
     e2eCycle = n;
     await snap(n === 1 ? 'idle' : `idle${n}`);
-    $('idle').dispatchEvent(new Event('pointerdown'));
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 400));   // 대기 화면 = 가이드 화면(별도 시작 터치 없음). 두 스냅은 같은 화면이다
     await snap(n === 1 ? 'guide' : `guide${n}`);
     if (E2E) {                                  // 손가락 커서가 매 사이클 보이는가
       const r = verifyGuideHand(`${n}번째 관람객`);
       if (!r.ok && (!e2eHand || e2eHand.ok)) e2eHand = r;
     }
-    const step = scale >= 0.3 ? 900 : 60;
+    const step = scale >= 0.3 ? 900 : (E2E ? 700 : 60);   // e2e 는 커서 검증(2개 터치 후 +620ms)이 3번째 터치 전에 끝나야 한다
     cfg.goals.forEach((g, i) => setTimeout(() => {
       const el = document.querySelector(`.bubble[data-key="${g.key}"]`);
-      if (el) el.dispatchEvent(new Event('pointerdown'));
+      if (el) {   // PRESS(다운) → 90ms 뒤 BURST(업) — 실제 터치와 같은 순서
+        el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true }));
+        setTimeout(() => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true })), 90);
+      }
       if (E2E && i === 1) {                     // 두 개 누른 뒤에도 커서가 다음 물방울을 가리키는가
         setTimeout(() => {                      // left/top 트랜지션(0.5s)이 끝난 뒤가 참값
           const r = verifyGuideHand(`${n}번째 관람객 · 2개 터치 후`);
@@ -1769,8 +2037,10 @@
     }, step * (i + 1)));
     // 시안 3~4컷 확인
     if (scale >= 0.3 && n === 1) {
-      setTimeout(() => snap('splash'), step + 320);   // 터지는 순간 (시안 3컷)
-      setTimeout(() => snap('popped'), step * 2 + 700); // 문구가 남은 상태 (시안 4컷)
+      setTimeout(() => snap('splash'), step + 90 + ms(300));   // 터지는 순간 (버스트 시트 7프레임째)
+      setTimeout(() => snap('popped'), step * 2 + ms(700));     // 문구가 남은 상태
+      setTimeout(() => snap('collect'), step * 3 + 90 + ms(B.collectAtMs + B.collectMs + B.collectStaggerMs * 7) + 40); // 알갱이가 상단에 맺힌 직후
+      setTimeout(() => snap('complete'), step * 3 + 90 + ms(B.burstMs + B.holdMs) - 60); // 3개 완료 홀드 끝 — 상단 물방울 3개 + 문구 3개
     }
   }
   if (RECORD) {

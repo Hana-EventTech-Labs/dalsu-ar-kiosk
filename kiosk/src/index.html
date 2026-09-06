@@ -8,8 +8,8 @@
 </head>
 <body>
   <div id="stage" data-state="IDLE">
-    <!-- 동화풍 배경: 하늘·구름·해·언덕 (디자인 캔버스와 동일 팔레트) -->
-    <!-- 배경: 시안 1~4컷과 같은 옅은 물빛 그라데이션 (해·구름·언덕 없음 — 타이틀·물방울을 방해하지 않도록). 색은 삼성 물방울색 #00b3e3 의 30%/15%/6% 틴트 -->
+    <!-- 배경 (2026-09-06 클라이언트 확정): 하늘·구름 JPG(screen.idleBg). 그 위에 달수 대기 루프 영상(screen.idleVideo, 배경 포함)이 IDLE/GUIDE 에서 돈다.
+         JPG 가 없거나 못 읽으면 아래 SVG 그라데이션이 그대로 보인다(폴백). 영상이 없으면 예전처럼 #stage-dalsu PNG 가 뜬다. -->
     <svg id="bg" viewBox="0 0 1080 1920" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -26,6 +26,12 @@
         <circle cx="874" cy="1352" r="12"/><circle cx="520" cy="1616" r="9"/><circle cx="96" cy="1520" r="11"/>
       </g>
     </svg>
+    <img id="bg-img" alt="" aria-hidden="true">
+    <video id="idle-video" loop playsinline preload="auto" aria-hidden="true"></video>
+    <!-- 물방울 이후 구간을 클라이언트 영상으로 대체하는 훅(screen.riverVideo) — 파일이 있을 때만 renderer 가 src 를 넣고 쓴다 -->
+    <video id="river-video" playsinline preload="auto" aria-hidden="true"></video>
+    <!-- 터짐 효과음(터짐 영상에서 추출한 WAV). file:// 에서는 fetch 가 안 되므로 <audio> 로 재생 -->
+    <audio id="sfx-burst" preload="auto" aria-hidden="true"></audio>
 
     <!-- 웹캠 라이브 (카운트다운·촬영 단계에서만 표시) -->
     <!-- 뷰파인더: 촬영 미리보기를 포토카드 모양 틀 안에 보여준다(config.screen.viewfinder). 아래 여백은 자연·달수가 합성될 자리 -->
@@ -37,22 +43,18 @@
 
     <!-- 시안 1~4컷: 타이틀·부제는 대기~터치 단계 내내 상단 고정 -->
     <header id="head">
+      <img id="head-title-img" alt="" aria-hidden="true">   <!-- 타이틀 그래픽(screen.titleImage) — 있으면 h1 대신 -->
       <h1 id="head-title"></h1>
       <p id="head-sub"></p>
     </header>
 
-    <!-- 시안 1~2컷: 달수는 하단 중앙에서 빼꼼 -->
+    <!-- 달수 PNG(대기 영상이 없을 때만 — 영상 안에 달수가 있다) -->
     <img id="stage-dalsu" alt="달수">
 
-    <!-- 물방울 4개 — 시안 1컷부터 노출, 터치는 GUIDE 단계에서만 -->
+    <!-- 물방울 3개(Reduce/Reuse/Restore) — 대기 화면부터 바로 터치 가능(별도 시작 터치 없음, 2026-09-06 스펙) -->
     <div id="bubbles"></div>
 
-    <!-- 대기 화면 -->
-    <section id="idle" class="screen">
-      <p id="idle-sub"></p>
-    </section>
-
-    <!-- 물방울 터치 가이드 — 시안 2컷 -->
+    <!-- 물방울 터치 가이드(손가락 커서·안내 문구) — IDLE·GUIDE 모두 표시 -->
     <section id="guide" class="screen">
       <div id="guide-hand"></div>
       <p id="guide-text"></p>
