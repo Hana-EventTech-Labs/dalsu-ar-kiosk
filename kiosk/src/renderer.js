@@ -11,6 +11,9 @@
   const RECORD = new URLSearchParams(location.search).get('record') === '1';
   // 소크 테스트: N 사이클을 연속으로 돌리며 JS 힙을 기록한다 (24시간 운영 전 누수 확인용). --smoke-soak=N
   const SOAK = parseInt(new URLSearchParams(location.search).get('soak') || '0', 10) || 0;
+  // 스모크에서 실제 마우스 클릭으로 물방울을 누른다(에뮬레이션 창이 아닐 때) — 히트테스트까지 검증
+  const REALMOUSE = new URLSearchParams(location.search).get('realmouse') === '1';
+  if (new URLSearchParams(location.search).get('kiosk') === '1') document.body.classList.add('kiosk');
   const soakHeap = [];
 
   // 렌더 루프에서 예외가 나면 화면이 조용히 멈춘다(무인 키오스크에서 최악).
@@ -398,7 +401,8 @@
       });
       b.addEventListener('pointerup', () => { if (!b.classList.contains('pressed')) return; b.classList.remove('pressed'); onBubble(g, b); });
       b.addEventListener('pointercancel', () => b.classList.remove('pressed'));
-      b.addEventListener('pointerleave', () => b.classList.remove('pressed'));   // 캡처가 안 잡힌 포인터가 밖으로 나가면 눌림만 푼다
+      // ⚠ pointerleave 로 눌림을 풀지 말 것 — 마우스에서는 setPointerCapture 전환 때 pointerleave 가 pointerup 보다 먼저 와서
+      //   눌림이 지워지고 터지지 않는다(실제 마우스 스모크가 잡았다). 캡처가 걸려 있으므로 pointerup 은 어디서 떼도 이 요소로 온다.
       wrap.appendChild(b);
     });
     if (SCR.guideHand === false) $('guide-hand').style.display = 'none';   // 클라이언트 레이아웃표에는 손가락 커서가 없다 — 끌 수 있게
@@ -1991,7 +1995,7 @@
       && typeof dataUrl === 'string' && dataUrl.length > 1000;
     const extra = {};
     // 인쇄본에 반투명 픽셀이 있으면 실패 — 프레임 PNG 가장자리가 투명 캔버스 위에 남던 사고 재발 방지
-    try { const d = cardCtx.getImageData(0, 0, card.width, card.height).data; let tr = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 255) tr++; if (tr) { ok = false; extra.transparentPx = tr; } } catch (e) { /* noop */ }
+    if (result && result.ok) try { const d = cardCtx.getImageData(0, 0, card.width, card.height).data; let tr = 0; for (let i = 3; i < d.length; i += 4) if (d[i] < 255) tr++; if (tr) { ok = false; extra.transparentPx = tr; } } catch (e) { /* noop */ }
     if (E2E) {                                          // 물줄기 검증을 통과해야 성공으로 친다
       if (!e2eResult) { ok = false; extra.e2e = '검증이 실행되지 않음'; }
       else { ok = ok && e2eResult.ok; extra.e2e = e2eResult.ok ? 'PASS' : e2eResult.problems; extra.cols = e2eResult.cols; }
@@ -2024,7 +2028,10 @@
     const step = scale >= 0.3 ? 900 : (E2E ? 700 : 60);   // e2e 는 커서 검증(2개 터치 후 +620ms)이 3번째 터치 전에 끝나야 한다
     cfg.goals.forEach((g, i) => setTimeout(() => {
       const el = document.querySelector(`.bubble[data-key="${g.key}"]`);
-      if (el) {   // PRESS(다운) → 90ms 뒤 BURST(업) — 실제 터치와 같은 순서
+      if (el && REALMOUSE && window.kiosk.click) {   // 실제 마우스: 다른 요소가 물방울을 덮고 있으면 여기서 실패한다
+        const r = el.getBoundingClientRect();
+        window.kiosk.click(r.left + r.width / 2, r.top + r.height * 0.5);
+      } else if (el) {   // PRESS(다운) → 90ms 뒤 BURST(업) — 실제 터치와 같은 순서
         el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true }));
         setTimeout(() => el.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true })), 90);
       }
