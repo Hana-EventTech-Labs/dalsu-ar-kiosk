@@ -13,3 +13,6 @@ DalsuARKiosk-*.exe
 
 # 파이썬 캐시
 __pycache__/
+
+# 클라이언트 전체 데모 영상(119MB) — 카카오톡 수신 폴더 원본을 assets-src/client-2026-09-06/demo/ 에 복사해 두고 쓴다. river.mp4 산출물은 kiosk/assets 에 들어간다
+assets-src/client-2026-09-06/demo/*.mp4

@@ -50,3 +50,12 @@ test('fail은 ERROR로 가고 reset으로 복귀', () => {
   f.reset();
   assert.equal(f.state, STATES.IDLE);
 });
+
+test('물방울 3개(Reduce/Reuse/Restore) 구성에서도 순서 무관하게 셋을 누르면 RIVER', () => {
+  const f = createFlow(['reduce', 'reuse', 'restore']);
+  f.start();
+  assert.deepEqual(f.popBubble('restore'), { accepted: true, popped: 1, remaining: 2, allDone: false });
+  f.popBubble('reduce');
+  assert.equal(f.popBubble('reuse').allDone, true);
+  assert.equal(f.state, STATES.RIVER);
+});

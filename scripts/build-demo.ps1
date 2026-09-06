@@ -45,6 +45,10 @@ Write-Host '== e2e 물줄기 검증 (가로 960x540) =='
 npx electron kiosk/main.js --smoke --smoke-e2e --smoke-speed=0.5 --smoke-size=960x540
 if ($LASTEXITCODE -ne 0) { throw "e2e 물줄기 검증(가로) 실패 (exit $LASTEXITCODE)" }
 
+Write-Host '== 실시간 스모크 (물길 영상 경로 — speed<1 스모크는 절차 연출로 가므로 여기서만 검증) =='
+npx electron kiosk/main.js --smoke --smoke-speed=1 --smoke-emulate=1080x1920
+if ($LASTEXITCODE -ne 0) { throw "실시간(영상 경로) 스모크 실패 (exit $LASTEXITCODE)" }
+
 Write-Host '== 숨김 종료 버튼 검증 =='
 npx electron kiosk/main.js --smoke --smoke-exit
 if ($LASTEXITCODE -ne 0) { throw "숨김 종료 버튼 검증 실패 (exit $LASTEXITCODE)" }
@@ -82,20 +86,28 @@ if (-not (Test-Path $unpacked)) { throw "$unpacked 없음" }
 Write-Host '== 패키징본 스모크 =='
 & $unpacked --smoke | Write-Host
 if ($LASTEXITCODE -ne 0) { throw "패키징본 스모크 실패 (exit $LASTEXITCODE)" }
+# asar 밖으로 푼 영상(asarUnpack)·CSP media-src 가 패키징본에서도 재생되는지 — 실시간으로 영상 경로를 탄다
+Write-Host '== 패키징본 실시간 스모크 (영상 경로) =='
+& $unpacked --smoke --smoke-speed=1 | Write-Host
+if ($LASTEXITCODE -ne 0) { throw "패키징본 실시간 스모크 실패 (exit $LASTEXITCODE)" }
 
 # 게이트 3: 동봉된 인쇄 CLI가 실제로 실행되는지(경로·SmartComm2.dll 동봉) --dry-run으로 확인
 $cli = Join-Path $outDir 'win-unpacked' | Join-Path -ChildPath 'resources' | Join-Path -ChildPath 'printer' | Join-Path -ChildPath 'DalsuPrint.exe'
 $smokeOut = Join-Path $outDir 'win-unpacked' | Join-Path -ChildPath 'out' | Join-Path -ChildPath 'smoke'
 $sample = Get-ChildItem $smokeOut -Filter '*-front.png' | Select-Object -Last 1
 $sampleBack = Get-ChildItem $smokeOut -Filter '*-back.png' | Select-Object -Last 1
-if (-not $sample -or -not $sampleBack) { throw '스모크 산출물(front/back PNG)이 없어 인쇄 CLI를 검증할 수 없음' }
-# 설정과 같은 방향·SDK 경로로 검증해야 의미가 있다.
+# 설정과 같은 방향·SDK 경로·면 수로 검증해야 의미가 있다.
 # (예전에는 방향 인자 없이 돌려서 카드가 세로인데 게이트는 가로로 통과했다)
 $cfg = Get-Content (Join-Path $root 'kiosk\config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$duplex = ($cfg.card.printBack -eq $true)
+if (-not $sample) { throw '스모크 산출물(front PNG)이 없어 인쇄 CLI를 검증할 수 없음' }
+if ($duplex -and -not $sampleBack) { throw '양면 설정인데 스모크 산출물에 back PNG 가 없음' }
+if (-not $duplex -and $sampleBack) { throw '단면 설정인데 back PNG 가 생겼다 — main.js printCard 가 뒷면을 복사하고 있다' }
 $orient = if ($cfg.card.orientation -eq 'portrait') { '--portrait' } else { '--landscape' }
 $sdk = if ($cfg.printer.sdk) { $cfg.printer.sdk } else { 'comm' }
-Write-Host ("== 동봉 인쇄 CLI --dry-run ({0} {1} {2}x{3}) ==" -f $sdk, $orient, $cfg.card.width, $cfg.card.height)
-& $cli --dry-run --mode $sdk $orient --front $sample.FullName --back $sampleBack.FullName | Write-Host
+Write-Host ("== 동봉 인쇄 CLI --dry-run ({0} {1} {2}x{3} {4}) ==" -f $sdk, $orient, $cfg.card.width, $cfg.card.height, $(if ($duplex) { '양면' } else { '단면' }))
+if ($duplex) { & $cli --dry-run --mode $sdk $orient --front $sample.FullName --back $sampleBack.FullName | Write-Host }
+else { & $cli --dry-run --mode $sdk $orient --front $sample.FullName | Write-Host }
 if ($LASTEXITCODE -ne 0) { throw "DalsuPrint.exe --dry-run 실패 (exit $LASTEXITCODE)" }
 # 카드 규격이 설정과 다르면(세로인데 가로로 그려졌다면) 여기서 잡는다
 Add-Type -AssemblyName System.Drawing

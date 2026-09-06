@@ -17,6 +17,7 @@ const SITE_PATHS = Object.freeze([
   'printer',          // mode(smart/dry-run)·deviceDesc·sdk·timeoutMs·retry — 현장 프린터에 맞춘 값
   'camera',           // deviceId·해상도·mirror
   'card.backRotate',  // 플리퍼 축에 따른 뒷면 회전
+  'card.printBack',   // 양면(true) / 앞면만(false, 기본 — 뒷면은 옵셋 사전 인쇄 카드)
   'update',           // 자동 업데이트 on/off·주기
   'output',           // 보관 일수·폴더
   'sound',
@@ -68,7 +69,7 @@ function extractSite(full) {
 const README = [
   '이 파일은 현장값 오버레이입니다. 여기 적힌 키만 앱에 든 기본 config 를 덮어씁니다.',
   '메뉴·문구·색·연출은 앱 업데이트로 자동 반영되므로 여기 적지 마세요(적으면 그 키는 업데이트로 바뀌지 않습니다).',
-  '보통 고칠 것: printer.mode(smart|dry-run) · printer.deviceDesc · camera.deviceId · card.backRotate',
+  '보통 고칠 것: printer.mode(smart|dry-run) · printer.deviceDesc · camera.deviceId · card.printBack(양면이면 true) · card.backRotate',
 ].join(' ');
 
 // 번들 config + 현장 오버레이 → 실제 config. 현장 파일이 예전 전체 복사본이면 마이그레이션 정보도 돌려준다.

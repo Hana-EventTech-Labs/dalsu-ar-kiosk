@@ -31,6 +31,16 @@
 `kiosk/assets/card-back.png` (포토카드 뒷면, 2026-09-03)는 클라이언트가 전달한 최종 디자인 `assets-src/card-back-final.png`(685×1063, 달수 + SAMSUNG 로고)를
 `scripts/make-card-back.ps1` 이 카드 규격 664×1040 으로 cover 리사이즈(좌우 3px 크롭)한 것입니다. 최종본이 있으면 자동 생성 플레이스홀더는 쓰지 않습니다.
 
+`kiosk/assets/idle-bg.jpg` · `idle-loop.mp4` · `bubble-reduce.png` · `bubble-reuse.png` · `bubble-restore.png` · `burst.png` · `burst-sfx.wav` ·
+`card-frame.png` · `card-frame-demo.png` · `title.png` · `river.mp4` (2026-09-06)는 클라이언트(머그음)가 전달한 [최종 1차] 자료와 [최종]전체데모에서
+`scripts/import-client-assets.py` 가 만든 것입니다. 원본은 `assets-src/client-2026-09-06/`(전체 데모 영상 119MB 는 저장소에 넣지 않음 — 카카오톡 수신 폴더 `오른쪽_물튀김 copy`).
+- 대기 루프: `[달수]대기화면.mp4` 를 이음매 크로스페이드(8프레임)로 잇고 재인코딩(x264 crf18, AAC).
+- 터짐 시트: `물방울_터짐.mp4`(검정 배경)를 루마키(밝기 95~175 스무스스텝) + 원형 비네트로 잘라 40프레임 시트로. 효과음은 같은 영상의 오디오 1.5초.
+- 카드 앞면 프레임: `인쇄스크린_인쇄디자인.png`(바탕화면 전달분, 기본) / `달수 앞면.png`(데모 영상에 쓰인 버전, `card-frame-demo`). 664×1040 cover.
+- 타이틀: `달수_타이틀_1.png`(검정 배경)를 검정 키잉.
+- 물길 영상: `[최종]전체데모.mp4` 의 16.07~25.77초(장면 전환 검출)를 잘라 재인코딩(x264 crf20). 자막·효과는 영상에 이미 들어 있다.
+- `물튀.png`·`왼쪽/오른쪽_물튀김 copy.png` 는 데모 영상 자막 장식으로 이미 영상에 들어 있어 앱에서 따로 쓰지 않는다(원본만 보관).
+
 ## 재채색 (2026-09-03, 삼성 지정 팔레트)
 
 `tree-1~4.png`, `plant-1~3.png` 는 위 생성물을 `scripts/recolor-nature.py` 로 초록 잎 구간(색상각 55~170°)만 삼성 숲색 `#00c3b2`(≈175°) 쪽으로 옮긴 것입니다.

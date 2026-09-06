@@ -16,9 +16,18 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #stage { position: relative; width: min(100vw, 56.25vh); height: min(100vh, 177.7778vw);
   container-type: size; overflow: hidden; background: var(--paper); box-shadow: 0 0 4vh rgba(0,0,0,.45); }
 
-/* 일러스트 배경 (하늘·구름·해·언덕) — index.html 인라인 SVG */
+/* 배경: SVG 그라데이션(폴백) 위에 하늘 JPG, 그 위에 대기 루프 영상. 영상은 IDLE/GUIDE 에서만 재생·표시(RIVER 진입 시 페이드아웃 = 스펙의 '컷 전환' 자리) */
 #bg { position: absolute; inset: 0; width: 100%; height: 100%; }
-#stage[data-state="COUNTDOWN"] #bg, #stage[data-state="CAPTURE"] #bg { opacity: 0; }
+#bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+#stage[data-bg-img="on"] #bg-img { display: block; }
+#idle-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; display: none; }
+#stage[data-idle-video="on"] #idle-video { display: block; }
+#stage[data-idle-video="on"][data-state="IDLE"] #idle-video, #stage[data-idle-video="on"][data-state="GUIDE"] #idle-video { opacity: 1; }
+#stage[data-idle-video="on"] #stage-dalsu { display: none; }   /* 영상 안에 달수가 있다 */
+#river-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; visibility: hidden; opacity: 0; z-index: 1; transition: opacity .5s, visibility 0s .5s; }
+#stage[data-river-video="playing"] #river-video { visibility: visible; opacity: 1; transition: opacity .5s; }
+#stage[data-state="COUNTDOWN"] #bg, #stage[data-state="CAPTURE"] #bg,
+#stage[data-state="COUNTDOWN"] #bg-img, #stage[data-state="CAPTURE"] #bg-img { opacity: 0; }
 
 /* 카메라: 기획 흐름도대로 4단계(카운트다운·촬영)에서만 노출 */
 /* 촬영 미리보기는 **인쇄될 프레이밍과 같아야** 한다 — 보이는 대로 찍혀야 하므로
@@ -35,6 +44,20 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #stage.vf #cam { left: 50%; width: var(--vf-w, 70%); top: var(--vf-top, 12%); height: var(--vf-cam, 40%);
   border-radius: 2.4cqw 2.4cqw 0 0; transform: translateX(-50%); }
 #stage.vf #cam.mirror { transform: translateX(-50%) scaleX(-1); }
+/* 프레임 모드(card.frameImage): 카메라는 프레임의 투명 구멍 자리에만, 오버레이(프레임 그림)가 그 위를 덮는다 */
+#stage.vf.vf-frame #cam { left: var(--vf-cam-x); top: var(--vf-cam-y); width: var(--vf-cam-w); height: var(--vf-cam-h); transform: none; border-radius: 0; }
+#stage.vf.vf-frame #cam.mirror { transform: scaleX(-1); }
+#stage.vf.vf-frame #viewfinder { background: #fff; }
+#stage.vf.vf-frame #viewfinder .vf-below { display: none; }
+/* 데모(2026-09-06): 촬영 준비 문구와 3·2·1 은 카메라 자리 한가운데, 흰 글자. 준비 문구가 끝나면 숫자만 남는다 */
+#stage.vf.vf-frame #countdown .caption { position: absolute; left: var(--vf-cam-x); top: var(--vf-cam-y); width: var(--vf-cam-w); height: var(--vf-cam-h);
+  display: flex; align-items: center; justify-content: center; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+  color: #fff; font-size: 5.6cqw; line-height: 1.35; text-shadow: 0 .3cqh 1.2cqh rgba(0,0,0,.7), 0 0 2cqh rgba(0,0,0,.45); }
+#stage.vf.vf-frame #countdown .caption[hidden] { display: none; }
+#stage.vf.vf-frame #count-num { position: absolute; left: var(--vf-cam-x); top: var(--vf-cam-y); width: var(--vf-cam-w); height: var(--vf-cam-h); right: auto;
+  margin: 0; transform: none; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none;
+  color: #fff; font-size: 26cqw; line-height: 1; -webkit-text-stroke: 0; text-shadow: 0 .5cqh 1.6cqh rgba(0,0,0,.6), 0 0 3cqh rgba(0,0,0,.4); }
+#stage.vf.vf-frame #count-num:empty { display: none; }
 #vf-overlay { position: absolute; display: none; left: 50%; top: var(--vf-top, 12%); width: var(--vf-w, 70%); height: var(--vf-h, 60%);
   transform: translateX(-50%); border-radius: 2.4cqw; pointer-events: none; opacity: 0; transition: opacity .6s; }
 #stage.vf[data-state="COUNTDOWN"] #viewfinder, #stage.vf[data-state="CAPTURE"] #viewfinder,
@@ -43,7 +66,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6cqh 5cqw; }
-#stage[data-state="IDLE"] #idle,
+#stage[data-state="IDLE"] #guide,
 #stage[data-state="GUIDE"] #guide,
 #stage[data-state="RIVER"] #story, #stage[data-state="NATURE"] #story, #stage[data-state="SWIM"] #story,
 #stage[data-state="COUNTDOWN"] #countdown,
@@ -52,14 +75,17 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #stage[data-state="DONE"] #done,
 #stage[data-state="ERROR"] #error { display: flex; animation: screenIn .5s cubic-bezier(.2,.8,.2,1) both; }
 @keyframes screenIn { from { opacity: 0; transform: translateY(2cqh) } to { opacity: 1; transform: none } }
-#stage[data-state="IDLE"] #idle, #stage[data-state="GUIDE"] #guide, #stage[data-state="RIVER"] #story, #stage[data-state="NATURE"] #story, #stage[data-state="SWIM"] #story, #stage[data-state="COUNTDOWN"] #countdown, #stage[data-state="PREVIEW"] #preview, #stage[data-state="DONE"] #done { animation: screenIn .5s cubic-bezier(.2,.8,.2,1) both; }
+#stage[data-state="IDLE"] #guide, #stage[data-state="GUIDE"] #guide, #stage[data-state="RIVER"] #story, #stage[data-state="NATURE"] #story, #stage[data-state="SWIM"] #story, #stage[data-state="COUNTDOWN"] #countdown, #stage[data-state="PREVIEW"] #preview, #stage[data-state="DONE"] #done { animation: screenIn .5s cubic-bezier(.2,.8,.2,1) both; }
 
 /* 상단 고정 헤더 — 시안 1~4컷 (대기·터치 단계 내내 유지) */
-#head { position: absolute; top: 6.5cqh; left: 0; right: 0; text-align: center; z-index: 3; pointer-events: none;
+#head { position: absolute; top: 5.5cqh; left: 0; right: 0; text-align: center; z-index: 3; pointer-events: none;   /* 스펙: 타이틀 띠 y100~380 */
   opacity: 0; transition: opacity .5s; }
 #stage[data-state="IDLE"] #head, #stage[data-state="GUIDE"] #head { opacity: 1; }
 #head-title { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 5.8cqw; line-height: 1.24; color: var(--deep);
-  white-space: pre-line; text-shadow: 0 .35cqh 0 #fff, 0 .9cqh 1.8cqh rgba(11,74,112,.18); -webkit-text-stroke: .12cqw var(--deep); }
+  white-space: pre-line; text-shadow: 0 .35cqh 0 #fff, 0 0 1.2cqh #fff, 0 0 2.4cqh rgba(255,255,255,.9), 0 .9cqh 1.8cqh rgba(11,74,112,.18); -webkit-text-stroke: .12cqw var(--deep); }
+#head-title-img { display: none; width: 88cqw; height: auto; margin: 0 auto; filter: drop-shadow(0 .6cqh 1.4cqh rgba(0,40,90,.25)); }
+#head.img #head-title-img { display: block; }
+#head.img #head-title { display: none; }
 #head-sub { margin-top: 1.8cqh; font-size: 2.7cqw; line-height: 1.5; color: var(--s-blue-dark); white-space: pre-line; font-weight: 700; text-shadow: 0 .2cqh 0 rgba(255,255,255,.7); }
 
 /* 하단 중앙 달수 — 시안 1~2컷처럼 아래에서 빼꼼 */
@@ -69,10 +95,6 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #stage[data-state="IDLE"] #stage-dalsu, #stage[data-state="GUIDE"] #stage-dalsu { opacity: 1; }
 @keyframes bob { 0%,100% { transform: translateX(-50%) translateY(0) } 50% { transform: translateX(-50%) translateY(-1.6cqh) } }
 
-/* 대기 */
-#idle { justify-content: flex-end; padding-bottom: 46cqh; }  /* 물방울과 하단 달수 사이 빈 자리에 — 달수에 가리지 않게 */
-#idle p { position: relative; z-index: 2; font-size: 3cqw; color: var(--accent); animation: blink 1.8s infinite;
-  text-shadow: 0 .25cqh 0 #fff; }
 @keyframes blink { 0%,100% { opacity: .95 } 50% { opacity: .45 } }
 
 /* 캡션 (말풍선 카드) */
@@ -91,32 +113,34 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #story-goal i { width: 2.4cqw; height: 2.4cqw; border-radius: 50%; flex: none;
   box-shadow: 0 0 0 .5cqw rgba(255,255,255,.85); }
 
-/* 물방울 — 시안 1~4컷: 가로 1열 4개, 눈물방울 모양, 안에 아이콘 + 라벨 */
+/* 물방울 3개 — 클라이언트 스펙(2026-09-06): x 중심 270/540/810, 크기 약 300×400, y 550~1000. 위치는 config.screen.bubbleLayout(renderer 가 인라인).
+   구조: .bubble(부유 애니메이션) > .body(PNG + 라벨, PRESS 스쿼시) + .done(터진 자리에 남는 문구).
+   부유와 스쿼시를 다른 요소에 걸어야 transform 이 서로 덮지 않는다. */
 #bubbles { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity .5s; }
-#stage[data-state="IDLE"] #bubbles { opacity: 1; }                       /* 시안 1컷 — 보이지만 아직 못 누름 */
-#stage[data-state="GUIDE"] #bubbles { opacity: 1; pointer-events: auto; } /* 시안 2컷 — 터치 가능 */
-#stage[data-state="RIVER"] #bubbles { opacity: 1; }                        /* 시안 5컷 — 4개 목표 문구가 남은 채로 물길이 완성된다 */
-.bubble { position: absolute; width: 21cqw; height: 27.7cqw; transition: transform .25s; }
-.bubble .drop { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }
-.bubble .inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding-top: 16%; gap: .8cqh; }
+#stage[data-state="IDLE"] #bubbles, #stage[data-state="GUIDE"] #bubbles { opacity: 1; pointer-events: auto; }   /* 대기 화면부터 바로 터치 */
+#stage[data-state="RIVER"] #bubbles { opacity: 1; }                        /* 문구는 물길이 시작될 때 페이드아웃(renderer) */
+.bubble { position: absolute; width: 25cqw; height: 35cqw; animation: bubbleFloat 2.4s ease-in-out infinite; }
+/* 터치 히트박스 +40px(스펙) — 세로로만. 물방울 폭(25cqw)이 중심 간격(25cqw)과 같아 가로로 넓히면 이웃 물방울의 오른쪽 가장자리를 누를 때 다음 물방울이 터진다(리뷰) */
+.bubble::before { content: ""; position: absolute; inset: -3.7cqw 0; }
+@keyframes bubbleFloat { 0%,100% { transform: translateY(-.52cqh) } 50% { transform: translateY(.52cqh) } }   /* y ±10px, 2.4s 사인 */
+.bubble .body { position: absolute; inset: 0; transform-origin: 50% 60%; transition: transform var(--press-ms, 80ms) ease-out; }
+.bubble.pressed .body { transform: scale(1.05, .95); }                    /* PRESS: 스쿼시 */
+.bubble .body img.drop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }
+.bubble .body svg.drop { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }  /* PNG 폴백 */
+.bubble .inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 16%; gap: .8cqh; }
 .bubble svg.icon { width: 8.4cqw; height: 8.4cqw; }
-.bubble .label { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
+/* 영문 라벨 — PNG 에 아이콘이 중심 위쪽에 들어 있으므로 라벨은 하단(높이 ~68%)에 */
+.bubble .label { position: absolute; left: 0; right: 0; top: 66%; text-align: center; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
   text-shadow: 0 .22cqh .5cqh rgba(8,58,86,.55), 0 0 .35cqh rgba(8,58,86,.4); }
-.bubble:active { transform: scale(.95); }
-.bubble.popped .drop, .bubble.popped .inner { animation: dropPop .45s cubic-bezier(.2,.9,.3,1.3) forwards; }
-@keyframes dropPop { 0% { transform: scale(1); opacity: 1 } 40% { transform: scale(1.18) } 100% { transform: scale(1.5); opacity: 0 } }
-/* 2단계 물방울(Return) — 앞 3개를 다 누르기 전에는 없다가, 그 문구들이 상단 줄로 올라갈 때 가운데에 맺힌다 */
-.bubble.staged { display: none; }
-.bubble.reveal .drop, .bubble.reveal .inner { animation: dropIn .55s cubic-bezier(.2,.9,.3,1.3) both; }
-@keyframes dropIn { 0% { transform: scale(.2); opacity: 0 } 70% { transform: scale(1.08); opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
-/* 터진 자리에 목표 문구가 남는다 (시안 3~4컷) */
+.bubble.png .inner { display: none; }
+.bubble.popped { animation: none; }                                       /* 문구는 떠다니지 않는다 */
+.bubble.popped .body { visibility: hidden; }                              /* BURST: 물방울 숨김(터짐은 fx 캔버스) */
+/* MESSAGE: 터진 자리에 문구 페이드인 (스펙: BURST +200ms 에 200ms) — 사라지지 않고 남는다 */
 .bubble .done { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .4cqw; font-family: "Samsung SS Body KR", "Malgun Gothic", sans-serif; font-size: 2.95cqw; line-height: 1.3; color: var(--s-blue); text-align: center;
-  -webkit-text-stroke: .1cqw var(--s-blue);
-  text-shadow: 0 0 .8cqh #fff, 0 0 1.6cqh rgba(255,255,255,.95), 0 .3cqh 0 rgba(255,255,255,.9); }
-.bubble.popped .done { display: flex; animation: doneIn .5s .3s cubic-bezier(.2,.9,.3,1.3) both; }
-@keyframes doneIn { 0% { transform: translateY(1.4cqh) scale(.9); opacity: 0 } 100% { transform: none; opacity: 1 } }
+  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 3.1cqw; line-height: 1.32; color: #ffffff; text-align: center;
+  text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.55), 0 0 1.4cqh rgba(0,60,110,.4); }   /* 데모(2026-09-06): 하늘 위 흰 글자 */
+.bubble.popped .done { display: flex; animation: doneIn var(--msg-fade, 200ms) var(--msg-at, 200ms) ease-out both; }
+@keyframes doneIn { 0% { opacity: 0 } 100% { opacity: 1 } }
 
 /* 손가락 터치 커서 — 시안 2컷 */
 #guide-hand { position: absolute; z-index: 4; width: 9cqw; pointer-events: none; opacity: 0;
@@ -124,9 +148,9 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
   filter: drop-shadow(0 .8cqh 1.2cqh rgba(60,90,110,.28)); }
 #guide-hand svg { width: 100%; height: auto; display: block; }
 @keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6cqw,-1.4cqh) } }
-#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; bottom: 17cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;
-  font-size: 3.5cqw; line-height: 1.32; color: var(--deep); white-space: pre-line; text-align: center;
-  text-shadow: 0 .28cqh 0 #fff, 0 .6cqh 1.4cqh rgba(11,74,112,.2); }
+#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; right: 5cqw; top: 54.7cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;   /* 스펙: y1050~1120 */
+  font-size: 3cqw; line-height: 1.32; color: #fff; white-space: pre-line; text-align: center;
+  text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.6), 0 0 1.2cqh rgba(0,60,110,.45); }   /* 하늘(파랑) 위라 흰 글자 + 짙은 그림자 */
 
 /* 카운트다운 (카메라 위) */
 #countdown { background: linear-gradient(180deg, rgba(47,58,68,.12), rgba(47,58,68,.35)); }

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "src": "[달수]대기화면.mp4",
+  "fps": 30.0,
+  "srcFrames": 236,
+  "start": 3,
+  "end": 234,
+  "crossfadeFrames": 8,
+  "frames": 223,
+  "durationSec": 7.433,
+  "seamMADraw": 1.594,
+  "seamMAD": 0.372,
+  "neighborMAD": 0.361,
+  "seamOk": true,
+  "sizeBytes": 3459474
+}

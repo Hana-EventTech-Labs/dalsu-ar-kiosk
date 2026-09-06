@@ -10,7 +10,36 @@
 - 납기 2026-09-04(조정 요청 중, 원래 9/2). 현장 리허설 후 9/9 오픈.
 - 하드웨어: 32인치 터치 키오스크(세로) + 상단 웹캠 + **Smart-81D 양면 카드프린터**(플리퍼)
 
-## 콘텐츠 수정 (2026-09-01 클라이언트 `(FM)KIWW2026_AR포토부스_콘텐츠수정.pptx` — 아래 요구사항 3·4번을 덮어쓴다)
+## 클라이언트 [최종 1차] 자료 적용 (2026-09-06 — 아래 "콘텐츠 수정"과 요구사항 1~8번을 덮어쓴다. 스펙 원문 `docs/CLIENT_SPEC_20260906.md`)
+클라이언트가 대기~물방울 구간 스펙(`참고사항.txt`)과 자산, 그리고 **앱 전체 흐름을 그대로 재현한 데모 영상**(`[최종]전체데모.mp4`, 49초)을 보냈다.
+데모 영상이 곧 최종 시안이다 — 화면 배치·문구·타이밍은 데모를 따른다. 원본은 `assets-src/client-2026-09-06/`(+`demo/`), 런타임 자산은 `npm run assets:client` 가 만든다.
+- **물방울은 3개 Reduce / Reuse / Restore**(`config.goals`, main.js 가 3개 강제). Recycle·Return 2단계 구성은 폐기. 문구(터진 자리에 흰 글자로 남는다):
+  "물 사용량을 줄입니다" / "사용한 물을 재이용합니다" / "사용한 물 이상을 복원합니다". 안내 "물방울을 터치해주세요!". 부제 없음.
+- **대기 화면 = 가이드 화면**(별도 시작 터치 없음): 타이틀 그래픽(`title.png`, `screen.titleImage`) + 물방울 3개 부유(y ±10px 2.4s, 위상 0.3s) +
+  **달수 대기 루프 영상**(`idle-loop.mp4`, 배경 포함, 소리는 키오스크 스피커 `sound.idleVolume`). 영상은 IDLE/GUIDE 에서만 재생하고 그 밖에서는 **멈춘다**(GPU 없는 PC).
+  원본 루프는 이음매가 없어(최적 쌍도 인접 프레임 차의 4.5배) 8프레임 크로스페이드로 이었다 — YUV 원시 데이터로 블렌딩한다(RGB/PNG 로 돌리면 601/709 변환으로 밝기가 5단계 튄다, 실측).
+- **터치 상태 머신**(`timing.bubble`, 스펙 5·6번 수치 그대로, 코드 기본값과 병합): PRESS(pointerdown, 스쿼시 80ms) → BURST(pointerup, 시트 1000ms) →
+  MESSAGE(+200ms, 200ms 페이드, 제자리 유지) → COLLECT(+150ms, 알갱이 6개 700ms·40ms 간격 → 상단 도착점에 작은 물방울로 맺힘) → COMPLETE(셋 다 → +500ms 홀드).
+  · 눌림 상태는 **물방울마다**(`.pressed` 클래스) — 전역 하나로 두면 겹쳐 누를 때 앞 것이 무시된다(스모크가 잡았다).
+  · 터짐은 `burst.png` **스프라이트 시트**(검정 배경 영상 루마키). 알파 VP9 `<video>` 는 GPU 무관 소프트웨어 디코드라 쓰지 않는다. `burst.json.drop`(정지 물방울 bbox)으로
+    영상 속 물방울을 화면 물방울 몸체에 정확히 겹친다. 원본 물튀김이 프레임을 가득 채워 셀 경계가 보이므로 **원형 비네트**를 씌웠고, 잿빛 연기는 밝기 95 아래를 잘라 없앴다.
+  · 상단 도착점 = `screen.collectTargets` > `river.json.drops`(물길 영상 첫 프레임의 유리 물방울 3개, 눈으로 실측) > 물방울 x 중심 × `goalRowTop`.
+- **물방울 이후 구간은 클라이언트 영상**(`screen.riverVideo` = `river.mp4`, 데모 16.07~25.77초 장면 전환 검출로 절단): 드롭 3개 → 합류 → S자 강 → 수달, 자막 포함, 약 9.7초.
+  `runRiverVideo()` 가 RIVER 에서 재생하고 끝나면 NATURE·SWIM 을 건너뛰어 COUNTDOWN 으로. **파일이 없거나 실패하면 예전 절차 연출(3줄기 합류 → S자 → 헤엄)로 자동 폴백** —
+  절차 연출 코드는 그대로 살아 있고 시간 압축 스모크(`speed<1`)·e2e·녹화는 절차 연출로 검증된다. `--smoke-speed=1` 실시간 스모크가 영상 경로를 검증한다(2026-09-06 PASS).
+  ⚠ 영상 경로에서도 `resetSceneAnim()` 을 불러야 한다 — 안 하면 두 번째 관람객의 영상 위에 앞 관람객의 완성된 강이 그려진다. 촬영 화면 페이드도 `riverProgress>0` 일 때만 장면을 그린다.
+- **카드 앞면 = 사진 + 프레임 PNG**(`card.frameImage`, 가운데 투명 구멍에 사진 cover). 자연·달수·문구는 프레임 그림에 들어 있어 예전 절차 합성은 프레임이 없을 때만 폴백.
+  기본 `card-frame.png` = 바탕화면 전달분 `인쇄스크린_인쇄디자인.png`(SAMSUNG 로고·정수시설), 대안 `card-frame-demo.png` = 데모 영상의 `달수 앞면.png`. **어느 쪽이 최종인지 클라이언트 확인 필요**(9/7 앞면 PNG 변경 예고).
+  구멍이 거의 정사각(0.94)이라 가로 웹캠 폭의 52% 를 쓴다(예전 36% — 얼굴이 덜 확대된다). 뷰파인더도 같은 구멍 자리에 카메라를 놓는다(`.vf-frame`, `--vf-cam-*`).
+  촬영 준비 문구("사진 촬영 준비해주세요!")와 3·2·1 은 데모처럼 **카메라 자리 한가운데** 흰 글자(`countdownText` 는 빈 문자열 = 숨김).
+- **앞면 단면 인쇄**(`card.printBack:false`, SITE_PATHS): 뒷면은 옵셋으로 미리 인쇄한 카드. main.js 가 `--back` 을 생략하면 CLI 가 `PRTSIDE_FRONT` 로 찍는다(C# 변경 없음).
+  `printStages.settings` 문구에서 "양면"을 뺐다. **단면 실기 인쇄는 미검증** — 현장에서 1장 확인(체크리스트 B). 호퍼 투입 방향(빈 면이 헤드 쪽)도 그때 확인.
+- 리뷰(2026-09-06)로 잡은 것 — 되돌리지 말 것: ① 물방울 히트박스는 **세로로만** +40px(폭 25cqw = 간격 25cqw 라 가로로 넓히면 이웃이 터진다)
+  ② 마지막 물방울이 터지는 순간 `resetSceneAnim()`(flow 는 즉시 RIVER 라 앞 관람객의 완성된 강이 홀드 1.5초 동안 비친다) ③ 인쇄본은 흰 바탕을 먼저 깐다(프레임 가장자리 반투명 픽셀 5천 개 실측,
+  스모크가 `transparentPx` 로 잡는다) ④ 사진 구멍은 투명 픽셀 **전체** bbox(코어로 좁히면 하단 41px 이 빈 띠로 인쇄된다) ⑤ 터짐 비네트는 물방울이 사라진 4프레임째부터 ⑥ 효과음은 4개 풀로 돌려쓴다.
+- 클라이언트 요청 중 **"카드 프린트 될 때 단면초로<<로 메시지 변경"** 은 뜻이 불분명해 미반영 — 확인 필요. 9/7 변경 예고: 앞면 AR 포토 PNG, 폰트 디테일.
+
+## 콘텐츠 수정 (2026-09-01 클라이언트 `(FM)KIWW2026_AR포토부스_콘텐츠수정.pptx` — 아래 요구사항 3·4번을 덮어쓴다. **2026-09-06 자료가 다시 덮어쓴다**)
 - 4대 목표 → **물 순환 4단계 Reduce / Reuse / Recycle / Return**. 터치 시 문구: "물 사용량을 줄이고" / "물 재이용을 늘리고" /
   "정수 기술로 재활용하여" / "깨끗하게 정화된 물을 자연에게 돌려줍니다". 4개 완료 캡션: "다시 쓰는 물, 다시 살아나는 물길 / 그리고, 그 물길 끝에서 만나는 달수".
   엔딩·촬영 이후는 동일. `config.goals` 의 key 도 `reduce/reuse/recycle/return` 으로 바뀌었다(테스트 참조).
@@ -52,7 +81,7 @@ dalsu-ar-kiosk/
 │   │   ├── compose.js      # 합성 레이아웃 계산 (순수 JS, 테스트 대상)
 │   │   ├── river.js        # S자 물길 경로·달수 이동 좌표 (순수 JS)
 │   │   └── renderer.js     # DOM/캔버스/웹캠/애니메이션 — flow/compose/river 사용. ?smoke=1 이면 자동 실행(모의 프레임 → front.png → exit)
-│   └── assets/             # dalsu-*.png(변환본), card-back.png, bubble/nature 그래픽
+│   └── assets/             # dalsu-*.png(변환본), card-back.png, nature 그래픽 + 클라이언트 자산(idle-loop.mp4·bubble-*.png·burst.png·title.png·card-frame*.png·river.mp4, assets:client 산출)
 ├── printer/DalsuPrint/     # C# .NET 8 콘솔 CLI — SmartComm2 SDK 양면 인쇄
 │   ├── Program.cs          # --front --back [--printer desc] [--list] [--dry-run]
 │   ├── SmartComm2Wrapper.cs# smart51s-nfc-writer에서 검증된 래퍼 그대로
@@ -65,9 +94,10 @@ dalsu-ar-kiosk/
 │   ├── key-swim-sheet.py   # 크로마 키잉·디스필·사이클 절단·실루엣 정합 → dalsu-swim.png/.json
 │   ├── verify-swim-sheet.py# 시트 자동 검증 16종 + phase0 측정 + contact-sheet
 │   ├── cutout-nature.py    # 단색 배경 자연 스트립 → tree-*.png / plant-*.png (테두리 flood fill)
+│   ├── import-client-assets.py # 클라이언트 자료 → 런타임 자산 (루프 이음매·루마키 시트·프레임 구멍·물길 영상 절단·타이틀 키잉)
 │   └── build-printer.ps1   # dotnet publish → printer/dist/DalsuPrint.exe
 ├── tests/                  # node --test (flow/compose/river 순수 모듈)
-├── assets-src/             # 달수 원본 .ai (PDF 호환) — 수정 금지
+├── assets-src/             # 달수 원본 .ai (PDF 호환), client-2026-09-06/(클라이언트 자료 원본·실측 리포트) — 수정 금지
 ├── out/                    # 촬영 결과 (날짜별 front/back PNG) — gitignore
 └── logs/                   # 앱·인쇄 로그 — gitignore
 ```
@@ -258,12 +288,11 @@ dalsu-ar-kiosk/
 - **카드 앞면 AR = 「복구된 자연(강물 제외) + 달수」만**(2026-08-26 확정). 강물·수면은 화면 연출 전용이며 카드에 넣지 않는다.
   자연은 `compose.natureCardSlots()` 의 세 구역(왼쪽 물가 / 인물 앞 전경 / 달수 왼쪽 틈)에만 앉히고, 하단에 전경 풀을 깐다.
   피해야 할 것: ① 가운데 인물(얼굴·상반신) ② 우하단 달수. 나는 것(잠자리)은 접지 그림자를 그리지 않는다.
-- **물방울은 2단계**(2026-09-03 클라이언트 요청): 첫 화면은 **제목 + Reduce/Reuse/Recycle 3개 + 달수 + 안내 문구**만(부제 `screen.headSub` 는 빈 문자열, renderer 가 칸째 숨김).
-  셋을 다 누르면 `T.goalTextMs` 뒤 `revealStage2()` — 세 문구가 상단 줄(`goalRowTop`, 4칸 슬롯 `ROW_X`)로 올라가고 **Return 물방울(`goals[].stage: 2`)이 가운데 맺힌다**.
-  Return 을 누르면 그 문구도 4번째 슬롯으로 올라가고 지금까지와 같은 **4줄기 합류 → S자 → 달수 헤엄**이 이어진다. `config.goals` 는 여전히 4개(main.js 가 4개를 강제).
-  · 물방울 자리는 **같은 단계 안에서** 가운데 정렬(`POS`), 지류 발원지 x 는 물방울 자리가 아니라 상단 줄 슬롯 `ROW_X` 다 — 3개 정렬과 4칸 줄의 x 가 다르기 때문.
-  · `raiseGoalTexts()` 는 **터진(popped) 문구만**, 이동량은 변형 없는 물방울 중심 기준으로 잰다(두 번 불려도 누적되지 않는다). 2단계 공개와 합류 직전에 각각 한 번씩 불린다.
-  · 숨은(`.staged`) 물방울은 손가락 커서가 가리키지 않는다 — display:none 요소의 rect 가 0 이라 커서가 좌상단으로 튄다.
+- **물방울은 3개, 2단계 없음**(2026-09-06 — 위 "[최종 1차] 자료 적용" 참조). 2026-09-03 의 Return 2단계(`revealStage2`/`raiseGoalTexts`/`ROW_X`)는 삭제됐고 테스트가 부활을 막는다.
+  · 문구는 터진 자리에 남고 **물길이 시작될 때**(`runStory`/`runRiverVideo` 첫 줄) 페이드아웃 — `.done` 의 `doneIn`(fill:both)을 먼저 `animation:none` 으로 풀어야 opacity 트랜지션이 먹는다.
+  · 손가락 커서 위치는 부유 transform 을 타지 않는 **레이아웃 박스**(`elCenterLayout`)로 잰다. 터짐 위치는 반대로 `.popped` 전에 `elCenter` 로 재야 '지금 보이는 자리'다.
+  · 물방울 배치·크기는 `screen.bubbleLayout`(cqw/cqh) — 스펙 "영상 첫 프레임 정합 우선 조정"이라 코드가 아니라 config.
+- **대기·물방울 화면의 글자는 흰색**(2026-09-06 데모): 파란 하늘 영상 위라 목표 문구·안내 문구는 흰 글자 + 파란 그림자. 타이틀은 그래픽. 아래 팔레트 규칙은 나머지 화면(캡션·미리보기·오류)에 적용.
 - **삼성 지정 팔레트**(2026-09-03 클라이언트 전달, "이 색상 위주로") — **물방울 `#00b3e3` · 나무/숲 `#00c3b2` · 파랑 계열 `#0077c8`**. 되돌리지 말 것.
   · CSS 는 `:root` 의 `--s-drop / --s-forest / --s-blue / --s-blue-dark(#005a9e)` 에서만 색을 뽑는다. 제목·캡션·목표 문구·버튼은 `--s-blue`, 부제·아이콘은 `--s-blue-dark`.
   · `config.goals[].color` 4개 모두 `#00b3e3`(물방울은 한 색), `iconColor` `#005a9e`. 배경 하늘 그라데이션(index.html)은 `#00b3e3` 의 30/15/6% 틴트.
@@ -321,6 +350,7 @@ npm start                   # 키오스크 실행 (창 모드)
 npm run kiosk               # 전체화면 키오스크 모드
 npm run build:printer       # DalsuPrint.exe 빌드 (dotnet publish)
 npm run assets              # .ai → PNG 변환(+파편 제거) + 뒷면 카드 생성
+npm run assets:client       # 클라이언트 자료(assets-src/client-2026-09-06) → idle-loop·bubble·burst·title·card-frame·river 자산 (결정적, 재실행 가능)
 npm run assets:swim:plate   # 헤엄 사이클 생성용 시작 플레이트 (크로마 그린)
 npm run assets:swim         # 프레임 → 스프라이트 시트 + 자동 검증 (일회성 오프라인 작업)
 npm run record              # 데모 영상 녹화 → out/demo/*.mp4 (대기~헤엄, 촬영 화면 제외)
@@ -335,6 +365,7 @@ printer/dist/DalsuPrint.exe --front a.png --back b.png   # 실제 인쇄
 3. `npm run build:printer` 성공 + `DalsuPrint.exe --dry-run --front ... --back ...` exit 0
 4. 실장비 인쇄는 Smart-81D 연결된 PC에서만 검증 가능 — 미검증 시 "미검증"으로 명시 보고
    · **2026-09-01 실장비 양면 인쇄 확인됨** (패키지 `pkg-0901-121616`, `printer.sdk: comm`). 이후 인쇄 경로(`DalsuPrint`·`printCard`·카드 규격)를 바꾸면 다시 실기 검증이 필요하다.
+   · **2026-09-06 단면 인쇄(`card.printBack:false`, `--back` 생략 → `dwPrtSide 0`)는 실기 미검증** — 옵셋 뒷면 카드로 현장 리허설에서 1장 확인해야 한다.
 
 ## 컨벤션
 - JS: CommonJS, 순수 로직은 DOM 의존 없이 분리(테스트 가능). 한글 주석 OK.

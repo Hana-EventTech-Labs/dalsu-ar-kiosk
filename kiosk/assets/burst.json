@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "sheet": "burst.png",
+  "sheetW": 4096,
+  "sheetH": 2560,
+  "cols": 8,
+  "rows": 5,
+  "cellW": 512,
+  "cellH": 512,
+  "frames": 40,
+  "fps": 24.0,
+  "srcStartFrame": 34,
+  "srcEndFrame": 74,
+  "srcFrames": 97,
+  "drop": {
+    "x": 99,
+    "y": 36,
+    "w": 313,
+    "h": 439
+  },
+  "dropAspect": 0.713,
+  "bubbleBodyAspect": 0.7044,
+  "peakColor": [
+    174,
+    214,
+    238
+  ],
+  "skyColor": [
+    72,
+    157,
+    212
+  ],
+  "src": "물방울_터짐.mp4"
+}
