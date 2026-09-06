@@ -290,9 +290,9 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(ROOT, 'src', 'index.html'), {
-    query: IS_SMOKE
+    query: IS_KIOSK ? { kiosk: '1' } : IS_SMOKE
       ? { smoke: '1', ...(IS_RECORD ? { record: '1', speed: SMOKE_SPEED || '1' } : (SMOKE_SPEED ? { speed: SMOKE_SPEED } : {})),
-          ...(ARGS.has('--smoke-exit') ? { exitcheck: '1' } : {}), ...(ARGS.has('--smoke-e2e') ? { e2e: '1' } : {}), ...(ARGS.has('--smoke-bench') ? { bench: '1' } : {}), ...(SMOKE_SOAK ? { soak: String(SMOKE_SOAK) } : {}) }
+          ...(ARGS.has('--smoke-exit') ? { exitcheck: '1' } : {}), ...(SMOKE_EMULATE ? {} : { realmouse: '1' }), ...(ARGS.has('--smoke-e2e') ? { e2e: '1' } : {}), ...(ARGS.has('--smoke-bench') ? { bench: '1' } : {}), ...(SMOKE_SOAK ? { soak: String(SMOKE_SOAK) } : {}) }
       : {},
   });
   // 실제 키오스크 해상도(1080×1920)의 CSS 레이아웃을 그대로 검증한다.
@@ -515,6 +515,15 @@ ipcMain.handle('asset:meta', (_e, name) => {
 ipcMain.handle('asset:exists', (_e, rel) => {
   if (typeof rel !== 'string' || rel.includes('..') || path.isAbsolute(rel)) return false;
   try { return fs.existsSync(path.join(ROOT, rel)); } catch (e) { return false; }
+});
+// 스모크용 실제 마우스 클릭 — dispatchEvent 는 히트테스트를 건너뛰어 '다른 요소가 물방울을 덮는' 사고를 못 잡는다(2026-09-06 마우스 클릭 불가 보고)
+ipcMain.handle('input:click', async (e, x, y) => {
+  const wc = e.sender; const X = Math.round(x), Y = Math.round(y);
+  wc.sendInputEvent({ type: 'mouseMove', x: X, y: Y });
+  wc.sendInputEvent({ type: 'mouseDown', x: X, y: Y, button: 'left', clickCount: 1 });
+  await new Promise((r) => setTimeout(r, 90));
+  wc.sendInputEvent({ type: 'mouseUp', x: X, y: Y, button: 'left', clickCount: 1 });
+  return true;
 });
 ipcMain.handle('snap', async (e, name) => {
   const win = BrowserWindow.fromWebContents(e.sender); if (!win) return null;

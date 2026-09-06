@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('kiosk', {
   assetExists: (rel) => ipcRenderer.invoke('asset:exists', rel),   // kiosk/ 아래 상대경로
   reportState: (st) => ipcRenderer.invoke('flow:state', st),   // 자동 업데이트 적용 시점(대기 화면) 판단용
   snap: (name) => ipcRenderer.invoke('snap', name),
+  click: (x, y) => ipcRenderer.invoke('input:click', x, y),   // 스모크: 실제 마우스 클릭(히트테스트 포함)
   recordStop: () => ipcRenderer.invoke('record:stop'),
   quit: () => ipcRenderer.invoke('app:quit'),
   smokeExit: (ok, info) => ipcRenderer.invoke('smoke:exit', ok, info),
