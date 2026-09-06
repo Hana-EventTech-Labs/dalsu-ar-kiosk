@@ -38,8 +38,8 @@ jobs:
         run: npm run smoke
       - name: 실기 해상도 스모크
         run: npx electron kiosk/main.js --smoke --smoke-emulate=1080x1920
-      - name: Smoke (real-time, river video path)
-run: npx electron kiosk/main.js --smoke --smoke-speed=1 --smoke-emulate=1080x1920
+      - name: 실시간 스모크 (물길 영상 경로 — speed<1 스모크는 절차 연출로 가므로 여기서만 검증)
+        run: npx electron kiosk/main.js --smoke --smoke-speed=1 --smoke-emulate=1080x1920
 
       - name: 빌드 + Release 업로드
         env:
