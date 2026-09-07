@@ -135,11 +135,13 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 .bubble .label { position: absolute; left: 0; right: 0; top: 66%; text-align: center; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 2.9cqw; color: #ffffff;
   text-shadow: 0 .22cqh .5cqh rgba(8,58,86,.55), 0 0 .35cqh rgba(8,58,86,.4); }
 .bubble.png .inner { display: none; }
+.bubble.nolabel .label { display: none; }                                /* screen.bubbleLabel:false — 라벨이 그림에 있다(2026-09-07 변경 아이콘) */
 .bubble.popped { animation: none; }                                       /* 문구는 떠다니지 않는다 */
 .bubble.popped .body { visibility: hidden; }                              /* BURST: 물방울 숨김(터짐은 fx 캔버스) */
 /* MESSAGE: 터진 자리에 문구 페이드인 (스펙: BURST +200ms 에 200ms) — 사라지지 않고 남는다 */
-.bubble .done { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 3.1cqw; line-height: 1.32; color: #ffffff; text-align: center;
+/* 2026-09-07 클라이언트: "터지고 난 뒤 글자가 너무 작다" → 3.1 → 4.0cqw. 상자를 물방울보다 좌우 3cqw 넓혀 두 줄 문구가 안 잘리게(간격을 벌려 이웃과 겹치지 않는다) */
+.bubble .done { position: absolute; inset: 0 -3cqw; display: none; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 4cqw; line-height: 1.3; color: #ffffff; text-align: center;
   text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.55), 0 0 1.4cqh rgba(0,60,110,.4); }   /* 데모(2026-09-06): 하늘 위 흰 글자 */
 .bubble.popped .done { display: flex; animation: doneIn var(--msg-fade, 200ms) var(--msg-at, 200ms) ease-out both; }
 @keyframes doneIn { 0% { opacity: 0 } 100% { opacity: 1 } }

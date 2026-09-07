@@ -10,13 +10,14 @@
     "guideText": "물방울을 터치해주세요!",
     "bubbleLayout": {
       "xCenters": [
-        25,
+        21,
         50,
-        75
+        79
       ],
       "top": 30.5,
       "width": 25
     },
+    "bubbleLabel": false,
     "collectTargets": null,
     "guideHand": true,
     "burst": {
@@ -70,7 +71,7 @@
     {
       "key": "reduce",
       "label": "Reduce",
-      "text": "물\n사용량을\n줄입니다",
+      "text": "물 사용량\n줄이기",
       "image": "assets/bubble-reduce.png",
       "color": "#00b3e3",
       "icon": "reduce",
@@ -79,7 +80,7 @@
     {
       "key": "reuse",
       "label": "Reuse",
-      "text": "사용한\n물을\n재이용합니다",
+      "text": "사용한 물\n다시쓰기",
       "image": "assets/bubble-reuse.png",
       "color": "#00b3e3",
       "icon": "reuse",
@@ -88,7 +89,7 @@
     {
       "key": "restore",
       "label": "Restore",
-      "text": "사용한\n물 이상을\n복원합니다",
+      "text": "사용한\n물 이상을\n복원하기",
       "image": "assets/bubble-restore.png",
       "color": "#00b3e3",
       "icon": "sprout",
@@ -113,7 +114,7 @@
     "natureMs": 1400,
     "swimMs": 8000,
     "countdownSec": 3,
-    "readyMs": 1000,
+    "readyMs": 2000,
     "previewMs": 26000,
     "doneMs": 4000,
     "idleReturnMs": 30000,

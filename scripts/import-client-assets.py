@@ -58,6 +58,9 @@ F_DEMO = os.path.join('demo', '[최종]전체데모.mp4')
 RIVER_DROPS = [[0.162, 0.19], [0.5, 0.15], [0.852, 0.19]]
 CARD_W, CARD_H = 664, 1040
 BUBBLES = {'reduce': 'reduce.png', 'reuse': 'reuse.png', 'restore': 'restore.png'}
+# 2026-09-07 클라이언트 변경 아이콘(라벨 Reduce/Reuse/Restore 가 그림에 들어 있고 아이콘이 위로) — 있으면 이 폴더의 물방울을 쓴다
+SRC_BUBBLES = next((d for d in [os.path.join(ROOT, 'assets-src', 'client-2026-09-07'), SRC]
+                    if all(os.path.exists(os.path.join(d, fn)) for fn in BUBBLES.values())), SRC)
 
 STAGE_W, STAGE_H = 1080, 1920
 BUBBLE_W, BUBBLE_H = 450, 630
@@ -210,7 +213,7 @@ def import_bubbles(report):
     bodies = {}
     ims = {}
     for key, fn in BUBBLES.items():
-        im = Image.open(os.path.join(SRC, fn)).convert('RGBA')
+        im = Image.open(os.path.join(SRC_BUBBLES, fn)).convert('RGBA')
         a = np.asarray(im)[:, :, 3]
         ys, xs = np.where(a > 128)
         bodies[key] = (int(xs.min()), int(ys.min()), int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1))
@@ -226,11 +229,11 @@ def import_bubbles(report):
         canvas.paste(crop, (bx, by), crop)
         canvas.save(os.path.join(OUT, f'bubble-{key}.png'), optimize=True)
     meta = {'version': 1, 'w': BUBBLE_W, 'h': BUBBLE_H, 'body': {'x': bx, 'y': by, 'w': bw, 'h': bh},
-            'keys': list(BUBBLES.keys()), 'srcBodies': bodies}
+            'keys': list(BUBBLES.keys()), 'srcBodies': bodies, 'srcDir': os.path.basename(SRC_BUBBLES)}
     with open(os.path.join(OUT, 'bubble.json'), 'w', encoding='utf-8') as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     report['bubbles'] = meta
-    print(f'bubble-*.png  {BUBBLE_W}x{BUBBLE_H}  몸체 {bw}x{bh} @({bx},{by})  원본 {bodies}')
+    print(f'bubble-*.png  {BUBBLE_W}x{BUBBLE_H}  몸체 {bw}x{bh} @({bx},{by})  원본 {bodies}  ← {os.path.basename(SRC_BUBBLES)}')
     return meta
 
 
