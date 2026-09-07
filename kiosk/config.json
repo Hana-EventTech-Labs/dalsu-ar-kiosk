@@ -52,6 +52,13 @@
       "retry": "다시 시도하고 있어요",
       "done": "거의 다 됐어요"
     },
+    "updateText": {
+      "found": "새 버전 {v} 발견 — 내려받기 시작",
+      "downloading": "업데이트 내려받는 중 {p}%",
+      "ready": "업데이트 {v} 준비됨 — 대기 화면에서 곧 재시작",
+      "restarting": "업데이트 적용 — 재시작 중",
+      "error": ""
+    },
     "goalPayoff": [],
     "viewfinder": {
       "enabled": true,
@@ -129,6 +136,11 @@
     "height": 1040,
     "backImage": "assets/card-back.png",
     "printBack": false,
+    "safeInset": 0.025,
+    "printShift": {
+      "x": -5,
+      "y": 5
+    },
     "frameImage": "assets/card-frame.png",
     "dalsuScale": 0.3,
     "dalsuAnchor": "bottom-right",

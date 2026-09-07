@@ -144,12 +144,12 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 @keyframes doneIn { 0% { opacity: 0 } 100% { opacity: 1 } }
 
 /* 손가락 터치 커서 — 시안 2컷 */
-#guide-hand { position: absolute; z-index: 4; width: 9cqw; pointer-events: none; opacity: 0;
+#guide-hand { position: absolute; z-index: 4; width: 8cqw; pointer-events: none; opacity: 0;
   transition: left .5s, top .5s, opacity .3s; animation: tap 1.15s ease-in-out infinite;
   filter: drop-shadow(0 .8cqh 1.2cqh rgba(60,90,110,.28)); }
 #guide-hand svg { width: 100%; height: auto; display: block; }
 @keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6cqw,-1.4cqh) } }
-#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; right: 5cqw; top: 54.7cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;   /* 스펙: y1050~1120 */
+#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; right: 5cqw; top: 56.5cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;   /* 스펙: y1050~1120 */
   font-size: 3cqw; line-height: 1.32; color: #fff; white-space: pre-line; text-align: center;
   text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.6), 0 0 1.2cqh rgba(0,60,110,.45); }   /* 하늘(파랑) 위라 흰 글자 + 짙은 그림자 */
 
@@ -218,6 +218,11 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 #build-tag { position: absolute; left: 1.2cqw; bottom: .8cqh; z-index: 998; font-size: 1.05cqw; letter-spacing: .02em;
   color: rgba(20,60,84,.34); pointer-events: none; opacity: 0; transition: opacity .4s; }
 #stage[data-state="IDLE"] #build-tag { opacity: 1; }
+/* 자동 업데이트 진행 — 버전 표시 위에 작게. 표시가 없으면 운영자가 앱을 재실행해 다운로드가 처음부터 다시 시작된다 */
+#update-tag { position: absolute; left: 1.2cqw; bottom: 2.6cqh; z-index: 998; font-size: 1.5cqw; padding: .4cqh 1.2cqw; border-radius: 1cqw;
+  background: rgba(0,90,158,.78); color: #fff; font-weight: 700; pointer-events: none; opacity: 0; transition: opacity .4s; }
+#update-tag:empty { display: none; }
+#stage[data-state="IDLE"] #update-tag { opacity: 1; }
 #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 #flash.on { animation: flash .35s ease-out; }
 @keyframes flash { 0% { opacity: 1 } 100% { opacity: 0 } }

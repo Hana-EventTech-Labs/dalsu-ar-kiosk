@@ -18,6 +18,8 @@ const SITE_PATHS = Object.freeze([
   'camera',           // deviceId·해상도·mirror
   'card.backRotate',  // 플리퍼 축에 따른 뒷면 회전
   'card.printBack',   // 양면(true) / 앞면만(false, 기본 — 뒷면은 옵셋 사전 인쇄 카드)
+  'card.safeInset',   // 인쇄 안전 여백(짧은 변 비율) — 프린터 풀블리드 손실만큼 축소
+  'card.printShift',  // 인쇄 위치 보정 {x,y} px(+는 오른쪽/아래) — 카드 위치 오프셋 보정
   'update',           // 자동 업데이트 on/off·주기
   'output',           // 보관 일수·폴더
   'sound',

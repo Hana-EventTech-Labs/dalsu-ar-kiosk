@@ -470,10 +470,13 @@ function setupAutoUpdate() {
   autoUpdater.allowDowngrade = false;
   autoUpdater.logger = { info: (m) => log('INFO', '업데이트: ' + m), warn: (m) => log('WARN', '업데이트: ' + m), error: (m) => log('ERROR', '업데이트: ' + m), debug: () => {} };
   let downloaded = null;
-  autoUpdater.on('update-available', (i) => log('INFO', '새 버전 발견 — 다운로드 시작', { version: i.version }));
-  autoUpdater.on('update-not-available', (i) => log('INFO', '최신 버전', { version: i.version }));
-  autoUpdater.on('error', (e) => log('ERROR', '업데이트 실패 — 현재 버전 유지', { error: String(e && e.message || e) }));
-  autoUpdater.on('update-downloaded', (i) => { downloaded = i.version; log('INFO', '업데이트 다운로드 완료 — 대기 화면에서 적용', { version: i.version }); });
+  // 진행 상태를 대기 화면 구석에 보여준다 — 아무 표시가 없으면 운영자가 "안 바뀌네" 하고 앱을 재실행해 다운로드가 처음부터 다시 시작된다(2026-09-07 현장에서 실제로 그랬다)
+  const sendUpdate = (st) => { for (const w of BrowserWindow.getAllWindows()) { try { w.webContents.send('update:status', st); } catch (e) { /* 창이 닫힘 */ } } };
+  autoUpdater.on('update-available', (i) => { log('INFO', '새 버전 발견 — 다운로드 시작', { version: i.version }); sendUpdate({ phase: 'found', version: i.version }); });
+  autoUpdater.on('update-not-available', (i) => { log('INFO', '최신 버전', { version: i.version }); sendUpdate({ phase: 'none' }); });
+  autoUpdater.on('download-progress', (p) => sendUpdate({ phase: 'downloading', percent: Math.round(p.percent || 0) }));
+  autoUpdater.on('error', (e) => { log('ERROR', '업데이트 실패 — 현재 버전 유지', { error: String(e && e.message || e) }); sendUpdate({ phase: 'error' }); });
+  autoUpdater.on('update-downloaded', (i) => { downloaded = i.version; log('INFO', '업데이트 다운로드 완료 — 대기 화면에서 적용', { version: i.version }); sendUpdate({ phase: 'ready', version: i.version }); });
   const check = () => autoUpdater.checkForUpdates().catch((e) => log('WARN', '업데이트 확인 실패', { error: String(e && e.message || e) }));
   setTimeout(check, 15000);                                            // 시작 직후는 카메라·프린터 초기화에 양보
   setInterval(check, Math.max(5, U.checkMinutes) * 60 * 1000);
@@ -483,6 +486,7 @@ function setupAutoUpdate() {
     const idleFor = (Date.now() - rendererStateAt) / 1000;
     if (rendererState === 'IDLE' && idleFor >= U.idleSeconds) {
       log('INFO', '업데이트 적용 — 재시작', { version: downloaded, idleSec: Math.round(idleFor) });
+      sendUpdate({ phase: 'restarting', version: downloaded });
       setTimeout(() => autoUpdater.quitAndInstall(true, true), 500);
       downloaded = null;
     }

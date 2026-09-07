@@ -96,6 +96,18 @@ test('클라이언트 UI 자산과 메타가 서로 맞는다 (물방울 PNG · 
   }
 });
 
+test('인쇄 안전 여백·위치 보정은 현장값이고 범위 안이다 (SAMSUNG 로고 가장자리 잘림 보정, 2026-09-07)', () => {
+  const { SITE_PATHS } = require('../kiosk/src/siteconfig');
+  assert.ok(SITE_PATHS.includes('card.safeInset') && SITE_PATHS.includes('card.printShift'), '현장에서 config 로 조절할 수 있어야 한다');
+  assert.ok(cfg.card.safeInset >= 0 && cfg.card.safeInset <= 0.06, `safeInset ${cfg.card.safeInset} — 6% 넘으면 사진이 눈에 띄게 작아진다`);
+  const s = cfg.card.printShift || { x: 0, y: 0 };
+  assert.ok(Math.abs(s.x) <= 30 && Math.abs(s.y) <= 30, '이동 보정은 ±30px(≈2.5mm) 안');
+  const m = Math.round(Math.min(cfg.card.width, cfg.card.height) * cfg.card.safeInset);
+  assert.ok(m + Math.abs(s.x) >= 21 || cfg.card.safeInset === 0, `오른쪽 여백(inset ${m}px + shift ${Math.abs(s.x)}px)이 로고 오른쪽 여백 21px 을 보태 2mm 이상이어야 잘리지 않는다`);
+  const rs = fs.readFileSync(path.join(__dirname, '..', 'kiosk', 'src', 'renderer.js'), 'utf8');
+  assert.match(rs, /safeInset/, 'composeCard 가 안전 여백을 쓰지 않는다');
+});
+
 test('앞면 단면 인쇄 (뒷면은 옵셋 사전 인쇄) — main.js 가 뒷면을 무조건 넘기지 않는다', () => {
   assert.equal(cfg.card.printBack, false);
   assert.ok(!/양면/.test(cfg.screen.printStages.settings), '단면 인쇄인데 "양면" 문구가 남아 있다');
