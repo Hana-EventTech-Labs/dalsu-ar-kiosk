@@ -270,16 +270,16 @@
     c.quadraticCurveTo(cx + H * 0.26, headY + headR * 1.5, cx + H * 0.30, H); c.closePath(); c.fill();
     c.fillStyle = '#9aa6b2'; c.beginPath(); c.arc(cx, headY, headR, 0, Math.PI * 2); c.fill(); // 머리
     c.fillStyle = 'rgba(47,58,68,.55)'; c.font = 'bold 34px sans-serif'; c.textAlign = 'center';
-    c.fillText(SMOKE ? 'SMOKE TEST FRAME' : 'NO CAMERA', cx, H - 28 + Math.sin(t / 300) * 3);
+    c.fillText(SMOKE && !RECORD ? 'SMOKE TEST FRAME' : 'NO CAMERA', cx, H - 28 + Math.sin(t / 300) * 3);
   }
 
+  const useMockCam = () => {
+    frameSource = mock; fitCamPreview();
+    // 스모크에도 미리보기 영역에 모의 프레임을 흘려 촬영 화면 구도를 스냅샷으로 확인할 수 있게 한다
+    try { cam.srcObject = mock.captureStream(15); } catch (e) { /* 없어도 카드 합성에는 영향 없다 */ }
+  };
   async function initCamera() {
-    if (SMOKE) {
-      frameSource = mock; fitCamPreview();
-      // 스모크에도 미리보기 영역에 모의 프레임을 흘려 촬영 화면 구도를 스냅샷으로 확인할 수 있게 한다
-      try { cam.srcObject = mock.captureStream(15); } catch (e) { /* 없어도 카드 합성에는 영향 없다 */ }
-      return;
-    }
+    if (SMOKE && !RECORD) { useMockCam(); return; }   // 녹화는 실제 웹캠을 먼저 시도한다(전 과정 데모) — 없으면 모의 프레임
     try {
       const constraints = { video: { width: cfg.camera.width, height: cfg.camera.height, deviceId: cfg.camera.deviceId ? { exact: cfg.camera.deviceId } : undefined }, audio: false };
       cam.srcObject = await navigator.mediaDevices.getUserMedia(constraints);
@@ -290,7 +290,11 @@
       const track = cam.srcObject.getVideoTracks()[0];
       if (track) track.onended = () => { log('ERROR', '카메라 트랙 종료 — 재연결 시도'); frameSource = null; camRetry(); };
       return true;
-    } catch (e) { log('ERROR', '카메라 실패', { error: String(e) }); return false; }
+    } catch (e) {
+      log(RECORD ? 'WARN' : 'ERROR', '카메라 실패', { error: String(e) });
+      if (RECORD) { useMockCam(); log('WARN', '녹화: 웹캠 없음 — 모의 프레임으로 진행'); }
+      return false;
+    }
   }
   let camRetryTimer = null;
   function camRetry() {
@@ -597,10 +601,6 @@
           }, T.swimMs, () => {
             anim.life = 1; anim.natureCount = NCOUNT;
             // 기획 7번: 달수가 가운데 도착 → 촬영 화면. 곧장 카메라를 켜면 관람객이 놀라므로 준비 여유를 준다
-            if (RECORD) {                    // 데모 영상은 여기까지 — 촬영 화면(웹캠)은 담지 않는다
-              later(() => { log('INFO', '녹화 구간 종료 — 헤엄 도착'); window.kiosk.recordStop(); }, 2600);
-              return;
-            }
             $('story-text').textContent = cfg.screen.readyText;
             flow.advance(); setState(); runCountdown();
           });
@@ -610,7 +610,7 @@
   }
   // ---------- 클라이언트 영상 훅 (screen.riverVideo) ----------
   // 물방울 3개 뒤 구간(강·자연·헤엄)을 클라이언트가 만든 영상으로 대체한다. 파일이 실제로 있을 때만 켜지고(기동 시 확인),
-  // 재생이 실패하면 촬영 준비로 넘어간다. 스모크·녹화에서는 쓰지 않는다(시간 압축과 안 맞고, 결정적이어야 한다).
+  // 재생이 실패하면 촬영 준비로 넘어간다. 시간 압축 스모크(speed<1)에서는 쓰지 않는다(압축과 안 맞고, 결정적이어야 한다). 녹화는 실시간이라 쓴다.
   function runRiverVideo() {
     clearTimers(); setState(); clearBursts(); // RIVER
     resetSceneAnim();           // riverProgress=0 → fx 는 강·자연을 그리지 않는다(영상 위에 겹치면 안 된다)
@@ -623,8 +623,9 @@
     let ended = false;
     const finishVideo = (why) => {
       if (ended) return; ended = true;
-      stage.dataset.riverVideo = 'off'; try { riverVideo.pause(); } catch (e) { /* noop */ }
       log(why === 'ended' ? 'INFO' : 'WARN', '물길 영상 종료', { why });
+      try { riverVideo.pause(); } catch (e) { /* noop */ }
+      stage.dataset.riverVideo = 'off';
       // NATURE → SWIM 을 지나 COUNTDOWN 으로 (SWIM 이 끝났을 때와 같은 경로). 장면(강·자연)은 만들지 않았으므로 촬영 화면에 겹칠 것도 없다.
       flow.advance(); flow.advance();
       flow.advance(); setState(); runCountdown();
@@ -750,7 +751,7 @@
         $('preview-text').textContent = cfg.screen.doneSub || '';
         sound.chime();
         // clearTimers() 에 지워지지 않도록 later 가 아닌 setTimeout 으로 잡는다
-        if (SMOKE && scale >= 0.3) setTimeout(async () => {
+        if (SMOKE && scale >= 0.3 && !RECORD) setTimeout(async () => {   // 녹화는 대기 복귀까지 담고 finish() 에서 멈춘다
           await snap(e2eCycle === 1 ? 'done' : `done${e2eCycle}`);
           if (E2E && e2eCycle < 2) { lastResult = result; lastDataUrl = dataUrl; }   // 두 번째 관람객까지 확인 후 종료
           else if (SOAK && e2eCycle < SOAK) { lastResult = result; lastDataUrl = dataUrl; }
@@ -1973,6 +1974,8 @@
     stage.dataset.riverVideo = 'off'; if (riverVideoOk) { try { riverVideo.pause(); } catch (e) { /* noop */ } }
     if (idleVideoOk) { try { idleVideo.currentTime = 0; } catch (e) { /* noop */ } syncIdleVideo(); }
     log('INFO', '체험 완료 → 대기');
+    // 녹화(--record)는 전 과정(대기 → 물방울 → 물길 영상 → 촬영 → 인쇄 → 수령 → 대기 복귀)을 담고 대기 화면을 잠시 보여준 뒤 끝난다
+    if (RECORD && e2eCycle >= 1) setTimeout(() => { log('INFO', '녹화 구간 종료 — 대기 복귀'); window.kiosk.recordStop(); }, 2500);
     if (E2E && e2eCycle === 1) setTimeout(() => runSmokeCycle(2), 500);   // 두 번째 관람객
     if (SOAK && e2eCycle >= 1) {
       const m = performance.memory, mb = m ? +(m.usedJSHeapSize / 1048576).toFixed(1) : null;
@@ -2002,10 +2005,11 @@
   }
   let idleTimer = null;
   function resetIdleTimer() { clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (flow.state === 'GUIDE') finish(); }, ms(T.idleReturnMs)); }
-  // 물방울 이후 구간 영상 훅 — 파일이 실제로 있을 때만. 시간을 압축하는 스모크(speed<1)와 녹화에서는 절차 연출로 간다
+  // 물방울 이후 구간 영상 훅 — 파일이 실제로 있을 때만. 시간을 압축하는 스모크(speed<1)에서는 절차 연출로 간다
   // (영상은 실시간이라 압축과 안 맞는다). `--smoke-speed=1` 실시간 스모크는 영상 경로를 그대로 검증한다.
+  // 녹화(--record)는 실시간이므로 실제 앱과 같게 영상 경로로 간다 — 클라이언트에게 보내는 데모가 곧 실제 화면이어야 한다.
   const riverVideo = $('river-video');
-  if (SCR.riverVideo && riverVideo && !(SMOKE && scale < 0.99) && !RECORD) {
+  if (SCR.riverVideo && riverVideo && !(SMOKE && scale < 0.99)) {
     try {
       if (await window.kiosk.assetExists(SCR.riverVideo)) {
         riverVideo.src = '../' + SCR.riverVideo;
@@ -2065,7 +2069,8 @@
       const r = verifyGuideHand(`${n}번째 관람객`);
       if (!r.ok && (!e2eHand || e2eHand.ok)) e2eHand = r;
     }
-    const step = scale >= 0.3 ? 900 : (E2E ? 700 : 60);   // e2e 는 커서 검증(2개 터치 후 +620ms)이 3번째 터치 전에 끝나야 한다
+    const step = RECORD ? 1600 : scale >= 0.3 ? 900 : (E2E ? 700 : 60);   // e2e 는 커서 검증(2개 터치 후 +620ms)이 3번째 터치 전에 끝나야 한다
+    const lead = RECORD ? 2400 : 0;                       // 데모 녹화: 대기 화면을 3초쯤 보여준 뒤 첫 터치(관람객이 다가오는 시간)
     cfg.goals.forEach((g, i) => setTimeout(() => {
       const el = document.querySelector(`.bubble[data-key="${g.key}"]`);
       if (el && REALMOUSE && window.kiosk.click) {   // 실제 마우스: 다른 요소가 물방울을 덮고 있으면 여기서 실패한다
@@ -2081,7 +2086,7 @@
           if (!r.ok && (!e2eHand || e2eHand.ok)) e2eHand = r;
         }, 620);
       }
-    }, step * (i + 1)));
+    }, lead + step * (i + 1)));
     // 시안 3~4컷 확인
     if (scale >= 0.3 && n === 1) {
       setTimeout(() => snap('splash'), step + 90 + ms(300));   // 터지는 순간 (버스트 시트 7프레임째)
@@ -2096,6 +2101,6 @@
   if (SMOKE) {
     log('INFO', RECORD ? '녹화 시작' : 'SMOKE 시작');
     setTimeout(() => runSmokeCycle(1), 600);
-    setTimeout(() => (RECORD ? window.kiosk.recordStop() : smokeFinish({ ok: false, error: 'smoke timeout', mode: 'n/a' })), (scale >= 0.3 ? 90000 : 20000) * Math.max(1, SOAK));
+    setTimeout(() => (RECORD ? window.kiosk.recordStop() : smokeFinish({ ok: false, error: 'smoke timeout', mode: 'n/a' })), (RECORD ? 150000 : scale >= 0.3 ? 90000 : 20000) * Math.max(1, SOAK));
   }
 })().catch((e) => { console.error(e); window.kiosk && window.kiosk.log('ERROR', 'renderer 초기화 실패', { error: String(e && e.stack || e) }); if (location.search.includes('smoke=1')) window.kiosk.smokeExit(false, { error: String(e) }); });

@@ -1,6 +1,6 @@
 // Electron 메인 — 창 생성, 설정 제공, 결과 저장, 인쇄 CLI(DalsuPrint.exe) 실행
 'use strict';
-const { app, BrowserWindow, ipcMain, session, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, session, powerSaveBlocker, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -30,6 +30,8 @@ const REC_ARG = process.argv.find((a) => a === '--record' || a.startsWith('--rec
 const IS_RECORD = !!REC_ARG;
 const REC_OUT = (REC_ARG && REC_ARG.includes('=')) ? REC_ARG.split('=').slice(1).join('=') : '';
 const REC_BITRATE = +((process.argv.find((a) => a.startsWith('--record-bitrate=')) || '').split('=')[1]) || 6000000;
+// 녹화에서 dry-run 인쇄는 즉시 끝나 미리보기가 6초 만에 지나간다 — 데모에는 실제 인쇄처럼 단계가 진행되는 모습을 담는다(단면 약 22초 가정, 0 이면 즉시)
+const REC_PRINT_MS = (() => { const v = (process.argv.find((a) => a.startsWith('--record-print-ms=')) || '').split('=')[1]; return v === undefined || v === '' ? 22000 : Math.max(0, +v || 0); })();
 const SMOKE_SOAK = parseInt((process.argv.find((a) => a.startsWith('--smoke-soak=')) || '').split('=')[1] || '0', 10) || 0;
 const IS_SMOKE = ARGS.has('--smoke') || IS_RECORD || SMOKE_SOAK > 0;
 const NO_UPDATE = ARGS.has('--no-update');
@@ -203,6 +205,12 @@ async function printCard(frontDataUrl, opts, onStage) {
 
   if (config.printer.mode === 'dry-run') {
     log('INFO', 'dry-run 모드 — 실제 인쇄 생략');
+    if (IS_RECORD && REC_PRINT_MS > 0 && onStage) {   // 데모 녹화: 실제 프린터 단계 흐름을 시간에 맞춰 흉내낸다
+      const STAGES = [['start', 0], ['connect', 0.05], ['settings', 0.12], ['cardin', 0.2], ['load', 0.3], ['ribbon', 0.38], ['print', 0.45], ['eject', 0.9]];
+      const t0 = Date.now();
+      for (const [k, f] of STAGES) { await new Promise((r) => setTimeout(r, Math.max(0, t0 + f * REC_PRINT_MS - Date.now()))); onStage(k); }
+      await new Promise((r) => setTimeout(r, Math.max(0, t0 + REC_PRINT_MS - Date.now())));
+    }
     if (onStage) onStage('done');
     return { ok: true, mode: 'dry-run', front, back };
   }
@@ -277,6 +285,10 @@ function runPrinter(exe, args, onStage) {
 function createWindow() {
   // 키오스크 실물은 1080×1920 세로. 스모크는 화면에 들어가도록 같은 비율의 절반(540×960)으로 띄워
   // 캡처가 실제 키오스크 비율(vw/vh)을 그대로 반영하게 한다.
+  // 녹화 크기가 모니터에 안 들어가면(개발 PC 1920×1080 에서 1080×1920) 오프스크린으로 그린다.
+  // 화면보다 큰 창은 OS 가 작업 영역 높이로 잘라 아래가 안 담기고, 잘린 상태에서는 <video> 재생이 2초 만에 멈췄다(실측).
+  const recOffscreen = IS_RECORD && (() => { const wa = screen.getPrimaryDisplay().workAreaSize; return SMOKE_SIZE.w > wa.width || SMOKE_SIZE.h > wa.height; })();
+  if (recOffscreen) log('INFO', '녹화 오프스크린 렌더링 — 창이 모니터보다 커서', { size: `${SMOKE_SIZE.w}x${SMOKE_SIZE.h}` });
   const win = new BrowserWindow({
     width: IS_SMOKE ? SMOKE_SIZE.w : 1080, height: IS_SMOKE ? SMOKE_SIZE.h : 1920,
     useContentSize: true,
@@ -287,8 +299,15 @@ function createWindow() {
       preload: path.join(ROOT, 'preload.js'), contextIsolation: true, nodeIntegration: false,
       // 창이 가려지거나 뒤로 밀려도 requestAnimationFrame/타이머가 멈추지 않게 — 멈추면 연출이 그 자리에서 정지한다
       backgroundThrottling: false,
+      offscreen: recOffscreen,
     },
   });
+  if (recOffscreen) {
+    win.webContents.setFrameRate(60);
+    // 생성자는 창을 작업 영역 높이로 자른다 — 오프스크린에서는 화면과 무관하므로 원하는 크기로 다시 잡는다
+    win.setContentSize(SMOKE_SIZE.w, SMOKE_SIZE.h);
+    log('INFO', '녹화 창 크기', { content: win.getContentSize().join('x') });
+  }
   win.loadFile(path.join(ROOT, 'src', 'index.html'), {
     query: IS_KIOSK ? { kiosk: '1' } : IS_SMOKE
       ? { smoke: '1', ...(IS_RECORD ? { record: '1', speed: SMOKE_SPEED || '1' } : (SMOKE_SPEED ? { speed: SMOKE_SPEED } : {})),
@@ -381,16 +400,19 @@ app.whenReady().then(async () => {
 // (21초 내내 대기 화면), 창 테두리와 여백까지 들어갔다.
 // 지금은 Electron 이 합성기에서 직접 주는 프레임(beginFrameSubscription)을 30fps 로 골라 ffmpeg 에 그대로 밀어 넣는다.
 // 창 밖의 것이 섞일 수 없고, 크기가 창 내용과 정확히 같으며, 타이밍은 벽시계 기준이라 배속이 틀어지지 않는다.
-let recProc = null, recTimer = null, recWinRef = null, recPath = '', recFrames = 0, recLast = null, recSize = null;
+let recProc = null, recTimer = null, recWinRef = null, recPath = '', recTmp = '', recFrames = 0, recLast = null, recSize = null, recRecv = 0;   // recRecv = 합성기가 실제로 준 프레임 수
 
 function startRecorder(kioskWin) {
   recWinRef = kioskWin;
   recPath = REC_OUT || path.join(outDir('demo'), `demo-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.mp4`);
   fs.mkdirSync(path.dirname(recPath), { recursive: true });
-  kioskWin.webContents.on('did-finish-load', () => {
-    setTimeout(() => beginCapture(kioskWin), 400);      // 첫 페인트가 끝난 뒤
-  });
+  // 렌더러가 첫 상태(IDLE)를 보고하면 — 카메라 초기화(~3초)가 끝나고 물방울·달수 루프가 올라온 뒤 — 캡처를 시작한다.
+  // 페이지 로드 직후에 시작하면 앞 3초가 물방울 없는 빈 대기 화면으로 담긴다(실측). 신호가 안 오면 10초 뒤 강제 시작.
+  const start = () => { if (recCaptureStarted) return; recCaptureStarted = true; beginCapture(kioskWin); };
+  recOnFirstState = () => setTimeout(start, 700);      // #bubbles 페이드인(0.5초)이 끝난 뒤
+  kioskWin.webContents.on('did-finish-load', () => setTimeout(start, 10000));
 }
+let recCaptureStarted = false, recOnFirstState = null;
 
 function beginCapture(win) {
   win.webContents.beginFrameSubscription(false, (image) => {
@@ -399,6 +421,7 @@ function beginCapture(win) {
     if (!recSize) { recSize = sz; openFfmpeg(); }
     if (sz.width !== recSize.width || sz.height !== recSize.height) return;   // 크기가 바뀌면 그 프레임은 버린다
     recLast = image.getBitmap();                        // BGRA
+    recRecv++;
   });
   // 30fps 로 '가장 최근 프레임'을 밀어 넣는다.
   // ⚠ 타이머가 부르는 횟수를 그대로 세면 안 된다 — 메인 프로세스가 밀리면 틱을 건너뛰어
@@ -420,24 +443,37 @@ function openFfmpeg() {
     setTimeout(() => app.exit(1), 200);
     return;
   }
+  // 1단계: 캡처 중에는 **가장 싼 인코딩**(ultrafast, 준무손실)으로 임시 파일에 받는다.
+  // preset slow 로 1080×1920 을 실시간 인코딩하면 CPU 를 다 먹어 앱의 영상 디코드·합성이 굶는다 —
+  // 결과물에 새 프레임이 5장에 1장(약 6fps)만 담겼다(실측). 끝난 뒤 2단계에서 천천히 압축한다.
+  recTmp = recPath + '.capture.mkv';
   const args = ['-y', '-f', 'rawvideo', '-pix_fmt', 'bgra',
     '-s', `${recSize.width}x${recSize.height}`, '-r', '30', '-i', 'pipe:0',
-    // 세로 영상. yuv420p + faststart 라야 카톡·기본 플레이어·브라우저에서 그대로 재생된다.
     '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart', '-an', recPath];
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '16', '-pix_fmt', 'yuv420p', '-threads', '2',
+    '-an', recTmp];
   recProc = spawn(exe, args, { windowsHide: true });
   recProc.stdin.on('error', () => { /* 종료 시 EPIPE 는 정상 */ });
   let err = '';
   recProc.stderr.on('data', (d) => { err += d.toString().slice(-400); });
   recProc.on('close', (code) => {
+    if (code !== 0) { finishRecord(exe, code, err); return; }
+    // 2단계: 임시 캡처를 배포용으로 압축(세로 영상, yuv420p + faststart 라야 카톡·기본 플레이어·브라우저에서 그대로 재생된다)
+    log('INFO', '녹화 압축 중', { tmp: recTmp });
+    const enc = spawn(exe, ['-y', '-i', recTmp, '-c:v', 'libx264', '-preset', 'slow', '-crf', '26', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', '-an', recPath], { windowsHide: true });
+    let err2 = '';
+    enc.stderr.on('data', (d) => { err2 += d.toString().slice(-400); });
+    enc.on('close', (code2) => { try { fs.unlinkSync(recTmp); } catch (e) { /* noop */ } finishRecord(exe, code2, err2); });
+  });
+  function finishRecord(_exe, code, err) {
     let size = 0; try { size = fs.statSync(recPath).size; } catch (e) { /* noop */ }
     const ok = code === 0 && size > 0;
     log(ok ? 'INFO' : 'ERROR', ok ? '녹화 완료' : '녹화 실패',
-      { out: recPath, mb: +(size / 1048576).toFixed(1), frames: recFrames, sec: +(recFrames / 30).toFixed(1), code, tail: ok ? undefined : err.slice(-300) });
+      { out: recPath, mb: +(size / 1048576).toFixed(1), frames: recFrames, sec: +(recFrames / 30).toFixed(1), received: recRecv, uniqueFps: +(recRecv / Math.max(1, recFrames / 30)).toFixed(1), code, tail: ok ? undefined : err.slice(-300) });
     if (ok) console.log('영상: ' + recPath + '  (' + (size / 1048576).toFixed(1) + ' MB, ' + (recFrames / 30).toFixed(1) + '초)');
     setTimeout(() => app.exit(ok ? 0 : 1), 200);
-  });
+  }
   log('INFO', '녹화 시작', { out: recPath, size: `${recSize.width}x${recSize.height}`, fps: 30 });
 }
 
@@ -453,7 +489,7 @@ ipcMain.handle('record:stop', () => {
 ipcMain.handle('config:get', () => ({ ...config, build: BUILD }));
 // 렌더러가 상태가 바뀔 때마다 알려준다 — 자동 업데이트 적용 시점(대기 화면) 판단용
 let rendererState = 'IDLE', rendererStateAt = Date.now();
-ipcMain.handle('flow:state', (_e, st) => { rendererState = String(st || ''); rendererStateAt = Date.now(); return true; });
+ipcMain.handle('flow:state', (_e, st) => { rendererState = String(st || ''); rendererStateAt = Date.now(); if (recOnFirstState) { const f = recOnFirstState; recOnFirstState = null; f(); } return true; });
 
 // ---------- 자동 업데이트 (GitHub Releases) ----------
 // 태그 v* 푸시 → CI 가 Release 에 인스톨러 업로드 → 키오스크가 받아 **대기 화면일 때만** 재시작해 적용한다.
