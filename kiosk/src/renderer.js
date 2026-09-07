@@ -389,6 +389,7 @@
         : `<div class="body">${artDropSvg(i, ART_DROP_COLOR)}<div class="inner">${artIconSvg(g.icon, g.iconColor)}<div class="label"></div></div></div>`)
         + '<div class="done"></div>';
       if (pic) { b.classList.add('png'); b.querySelector('img.drop').src = pic.src; }
+      if (SCR.bubbleLabel === false) b.classList.add('nolabel');   // 2026-09-07: 라벨(Reduce/Reuse/Restore)이 PNG 에 들어 있어 CSS 라벨은 끈다
       else b.querySelector('.inner svg').classList.add('icon');
       b.querySelector('.label').textContent = g.label;
       // 목표 문구 — config 에 줄바꿈이 있으면 그 줄 그대로, 없으면 어절 단위로 세로 쌓기

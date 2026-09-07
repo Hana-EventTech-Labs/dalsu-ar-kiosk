@@ -43,10 +43,12 @@ test('시안 문구가 config에 모두 있고 물방울 문구는 클라이언�
     assert.ok(typeof cfg.screen[k] === 'string' && cfg.screen[k].length > 0, `screen.${k} 필요`);
   }
   const texts = Object.fromEntries(cfg.goals.map((g) => [g.key, g.text.replace(/\n/g, ' ')]));
-  // 2026-09-06 클라이언트 [최종 1차] 참고사항.txt — 3개 물방울, 문구는 터진 자리에 남는다
-  assert.equal(texts.reduce, '물 사용량을 줄입니다');
-  assert.equal(texts.reuse, '사용한 물을 재이용합니다');
-  assert.equal(texts.restore, '사용한 물 이상을 복원합니다');
+  // 2026-09-07 클라이언트 인트로 변경 요청 — 눌렀을 때 문구(3개 물방울, 문구는 터진 자리에 남는다)
+  assert.equal(texts.reduce, '물 사용량 줄이기');
+  assert.equal(texts.reuse, '사용한 물 다시쓰기');
+  assert.equal(texts.restore, '사용한 물 이상을 복원하기');
+  assert.equal(cfg.screen.bubbleLabel, false, '라벨(Reduce/Reuse/Restore)은 2026-09-07 PNG 에 들어 있다 — CSS 라벨을 겹치지 않는다');
+  assert.ok(cfg.timing.readyMs >= 2000, '"사진 촬영 준비해주세요" 는 2026-09-07 요청으로 1초 더(≥2초)');
   assert.deepEqual(cfg.goals.map((g) => g.key), ['reduce', 'reuse', 'restore'], '물방울 3개 (Recycle·Return 2단계는 폐기)');
   assert.deepEqual(cfg.goals.map((g) => g.label), ['Reduce', 'Reuse', 'Restore']);
   assert.ok(cfg.goals.every((g) => !g.stage), '2단계 물방울은 없다');
@@ -466,7 +468,9 @@ test('상단 물방울(모은 물) 자리가 물길 머리보다 위에 있다 �
   const riverTopY = river.pointAt(0) [1];
   assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 상단 물방울 줄(${row}vh)보다 아래여야 한다`);
   const bl = cfg.screen.bubbleLayout;
-  assert.deepEqual(bl.xCenters, [25, 50, 75], '스펙: x 중심 270/540/810');
+  // 스펙(2026-09-06)은 x 중심 25/50/75 였으나 2026-09-07 "물방울이 너무 붙어 있다" 요청으로 양옆을 벌렸다(폭 25cqw 는 유지)
+  assert.deepEqual(bl.xCenters, [21, 50, 79], '2026-09-07: 물방울 간격을 벌린다');
+  assert.ok(bl.xCenters[1] - bl.xCenters[0] > bl.width + 3 && bl.xCenters[0] - bl.width / 2 >= 5, '이웃과 3cqw 이상 떨어지고 화면 안에 든다');
   assert.ok(bl.top > 28 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 y550~1000 띠 안(스펙)');
 });
 
