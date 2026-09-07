@@ -469,13 +469,13 @@ test('상단 물방울(모은 물) 자리가 물길 머리보다 위에 있다 �
   const riverTopY = river.pointAt(0) [1];
   assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 상단 물방울 줄(${row}vh)보다 아래여야 한다`);
   const bl = cfg.screen.bubbleLayout;
-  // 스펙 문서(2026-09-06)는 x 중심 25/50/75·폭 300 이었지만 최종 데모 영상 실측은 중심 190/540/890(17.6/50/82.4%), 몸체 폭 310px, y 505~945.
-  // 2026-09-07 "너무 붙어 있다 / 데모대로 정확히" → 데모 실측값. 몸체 사이 41px.
-  assert.deepEqual(bl.xCenters, [17.5, 50, 82.5], '데모 실측 x 중심');
-  assert.equal(bl.width, 31, '데모 실측 폭(몸체 310px = 상자 31cqw)');
+  // 크기는 예전(스펙 폭 ~300px = 상자 25cqw)대로, 간격만 벌린다 — 2026-09-07 클라이언트 재확인("새 디자인은 그림만 입히고, 크기는 이전 그대로, 사이 간격만").
+  // 0.8.5 에서 데모 실측(폭 31)으로 키웠던 것을 0.8.6 에서 되돌렸다.
+  assert.deepEqual(bl.xCenters, [21, 50, 79], '간격만 벌린 x 중심');
+  assert.equal(bl.width, 25, '물방울 크기는 이전 그대로(상자 25cqw)');
   const bodyW = bl.width * 417 / 450;
-  assert.ok(bl.xCenters[1] - bl.xCenters[0] - bodyW >= 3 && bl.xCenters[0] - bl.width / 2 >= 1, '이웃 몸체와 3cqw 이상 떨어지고 화면 안에 든다');
-  assert.ok(bl.top > 24 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 데모 띠(y 505~945) 안, 안내 문구(57.8cqh) 위');
+  assert.ok(bl.xCenters[1] - bl.xCenters[0] - bodyW >= 3 && bl.xCenters[0] - bl.width / 2 >= 5, '이웃 몸체와 3cqw 이상 떨어지고 화면 안에 든다');
+  assert.ok(bl.top > 28 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 y550~1000 띠 안(스펙), 안내 문구(57.8cqh) 위');
 });
 
 test('숲 배치: 나무가 물길을 침범하지 않고 양옆에 선다 (시안 5·6컷)', () => {

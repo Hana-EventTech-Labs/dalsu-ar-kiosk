@@ -59,8 +59,12 @@ RIVER_DROPS = [[0.162, 0.19], [0.5, 0.15], [0.852, 0.19]]
 CARD_W, CARD_H = 664, 1040
 BUBBLES = {'reduce': 'reduce.png', 'reuse': 'reuse.png', 'restore': 'restore.png'}
 # 2026-09-07 클라이언트 변경 아이콘(라벨 Reduce/Reuse/Restore 가 그림에 들어 있고 아이콘이 위로) — 있으면 이 폴더의 물방울을 쓴다
-SRC_BUBBLES = next((d for d in [os.path.join(ROOT, 'assets-src', 'client-2026-09-07'), SRC]
+SRC_0907 = os.path.join(ROOT, 'assets-src', 'client-2026-09-07')
+SRC_BUBBLES = next((d for d in [SRC_0907, SRC]
                     if all(os.path.exists(os.path.join(d, fn)) for fn in BUBBLES.values())), SRC)
+# 9/7 저녁 추가 전달: 새 앞면 프레임(스크린.png → card-front-frame.png)·자막 바뀐 물길 영상(영상.mp4 → river.mp4). 있으면 이쪽이 이긴다.
+F_FRAME_0907 = os.path.join(SRC_0907, 'card-front-frame.png')
+F_RIVER_0907 = os.path.join(SRC_0907, 'river.mp4')
 
 STAGE_W, STAGE_H = 1080, 1920
 BUBBLE_W, BUBBLE_H = 450, 630
@@ -339,6 +343,8 @@ def import_card_frame(report):
 
 def _card_frame(report, fname, outname, key):
     src = os.path.join(SRC, fname)
+    if outname == 'card-frame' and os.path.exists(F_FRAME_0907):
+        src, fname = F_FRAME_0907, 'client-2026-09-07/card-front-frame.png'
     if not os.path.exists(src):
         print(f'{fname} 없음 — {outname} 생략')
         return
@@ -396,6 +402,8 @@ def import_title(report):
 
 # ---------------- 6-2. 물길 영상 (데모에서 잘라내기)
 def import_river(report):
+    if os.path.exists(F_RIVER_0907):
+        return import_river_file(report, F_RIVER_0907)
     src = os.path.join(SRC, F_DEMO)
     if not os.path.exists(src):
         print(f'{F_DEMO} 없음 — river.mp4 는 기존 파일 유지(카카오톡 수신 폴더에서 복사해 두면 다시 만든다)')
@@ -423,6 +431,28 @@ def import_river(report):
         json.dump(meta, f, ensure_ascii=False, indent=2)
     report['river'] = meta
     print(f'river.mp4  {meta["durationSec"]}s ({start:.3f}→{end:.3f}, 전환 diff {ds:.0f}/{de:.0f} vs 평시 {med1:.1f})  {meta["sizeBytes"]//1024}KB')
+
+
+def import_river_file(report, src):
+    """클라이언트가 물길 영상을 파일로 직접 준 경우(9/7 영상.mp4). 자르지 않고 그대로 — 재인코딩(yuv420p·faststart·끝 0.3초 페이드아웃)만 한다.
+    해상도는 원본 그대로 둔다(406×720 으로 왔다 — 화면에서 2.65배 확대된다. 원본을 다시 요청할 것; 받으면 이 파일만 바꾸고 재실행)."""
+    fps = probe_fps(src)
+    r = run(['-i', src, '-vf', 'scale=108:192', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'])
+    n = r.stdout and (len(r.stdout) // (108 * 192)) or 0
+    dur = n / fps
+    out = os.path.join(OUT, 'river.mp4')
+    run(['-i', src, '-c:v', 'libx264', '-crf', '18', '-preset', 'slow', '-pix_fmt', 'yuv420p',
+         '-c:a', 'aac', '-b:a', '128k', '-af', 'afade=t=out:st=%.3f:d=0.3' % max(0.0, dur - 0.3), '-movflags', '+faststart', out])
+    o = decode_frames(out, 108, 192, 'gray')
+    rgb = decode_frames(out, 270, 480, 'rgb24')
+    Image.fromarray(rgb[min(len(rgb) - 1, int(0.6 * fps))]).save(os.path.join(SRC, 'river-first.png'))
+    meta = {'version': 1, 'src': os.path.relpath(src, os.path.join(ROOT, 'assets-src')).replace(os.sep, '/'), 'fps': fps, 'start': 0, 'end': round(dur, 3),
+            'frames': int(len(o)), 'durationSec': round(len(o) / fps, 3), 'drops': RIVER_DROPS, 'sizeBytes': os.path.getsize(out),
+            'note': '클라이언트 직접 전달 파일 — 원본 해상도 유지(저해상도면 원본 재요청)'}
+    with open(os.path.join(OUT, 'river.json'), 'w', encoding='utf-8') as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    report['river'] = meta
+    print(f'river.mp4  {meta["durationSec"]}s  ← {meta["src"]} (파일 그대로, {meta["sizeBytes"]//1024}KB)')
 
 
 # ---------------------------------------------------------------- 7. 스펙 사본
