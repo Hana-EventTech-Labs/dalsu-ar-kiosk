@@ -53,6 +53,14 @@
   $('done-text').textContent = cfg.screen.doneText;
   $('error-text').textContent = cfg.screen.errorText;
   if (cfg.build) $('build-tag').textContent = `v${cfg.build.version}  ${cfg.build.builtAt}`;
+  // 자동 업데이트 진행 상태 — 대기 화면 구석(운영자용). 문구는 config.screen.updateText 로 덮을 수 있다.
+  { const UT = Object.assign({ found: '새 버전 {v} 발견 — 내려받기 시작', downloading: '업데이트 내려받는 중 {p}%', ready: '업데이트 {v} 준비됨 — 대기 화면에서 곧 재시작',
+      restarting: '업데이트 적용 — 재시작 중', error: '' }, (cfg.screen && cfg.screen.updateText) || {});
+    if (window.kiosk.onUpdateStatus) window.kiosk.onUpdateStatus((st) => {
+      const t = (UT[st.phase] || '').replace('{v}', st.version || '').replace('{p}', st.percent == null ? '' : st.percent);
+      $('update-tag').textContent = t;
+    });
+  }
   $('guide-hand').innerHTML = artHandSvg();
   $('printer').innerHTML = artPrinterSvg();
   card.width = cfg.card.width; card.height = cfg.card.height;   // 가로/세로 카드 모두 지원
@@ -441,8 +449,9 @@
     if (next < 0) return;
     const el = document.querySelector(`.bubble[data-key="${cfg.goals[next].key}"]`);
     if (!el) return;
-    const c = elCenterLayout(el, 0.80);   // 물방울 아래쪽 — 아이콘·라벨을 덮지 않고, 안내 문구(54.7%) 위
-    hand.style.left = c.x + 'px';
+    // 물방울 **바로 아래**(둥근 밑면 바깥), 손끝을 중심에서 살짝 오른쪽에 — 80% 지점에 두면 물방울 밑부분을 가린다(2026-09-07 지적)
+    const c = elCenterLayout(el, 0.985);
+    hand.style.left = (c.x + el.offsetWidth * 0.08) + 'px';
     hand.style.top = c.y + 'px';
     hand.style.opacity = .95;
   }

@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('kiosk', {
   quit: () => ipcRenderer.invoke('app:quit'),
   smokeExit: (ok, info) => ipcRenderer.invoke('smoke:exit', ok, info),
   // 인쇄 진행 단계 수신 (SMART-81 은 20~40초가 걸려 실제 단계를 보여줘야 한다)
+  // 자동 업데이트 진행 상태(found/downloading/ready/restarting/error) — 대기 화면 구석 표시용
+  onUpdateStatus: (cb) => {
+    const h = (_e, st) => cb(st);
+    ipcRenderer.on('update:status', h);
+    return () => ipcRenderer.removeListener('update:status', h);
+  },
   onPrintStage: (cb) => {
     const h = (_e, key) => cb(key);
     ipcRenderer.on('print:stage', h);
