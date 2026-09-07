@@ -136,6 +136,11 @@
     "height": 1040,
     "backImage": "assets/card-back.png",
     "printBack": false,
+    "safeInset": 0.025,
+    "printShift": {
+      "x": -5,
+      "y": 5
+    },
     "frameImage": "assets/card-frame.png",
     "dalsuScale": 0.3,
     "dalsuAnchor": "bottom-right",

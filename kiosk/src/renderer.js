@@ -931,7 +931,24 @@
     // ④ 색감 통일 — 사진과 그림이 같은 빛 아래 있어 보이도록 아주 옅은 wash (오버레이엔 안 건다 — 영상이 뿌예진다)
     if (o.photo !== false) { ctx.fillStyle = 'rgba(120,170,190,.045)'; ctx.fillRect(0, 0, W, H); }
   }
-  function composeCard() { drawCardLayers(cardCtx, card.width, card.height, { photo: true }); }
+  // 인쇄 안전 여백(2026-09-07 현장: 풀블리드 손실 + 카드 위치 오프셋으로 SAMSUNG 로고 위·오른쪽이 잘렸다 — 로고가 가장자리 1.7~2.1mm 에 있다).
+  // card.safeInset(짧은 변 비율, 예 0.025 ≈ 1.3mm)만큼 전체를 축소하고 card.printShift{x,y}(px, +는 오른쪽/아래)로 밀어 찍는다.
+  // 비는 테두리는 같은 그림을 원래 크기로 먼저 깔아 채운다(가장자리 하늘·풀이 그대로 이어져 단색 띠보다 자연스럽다). 둘 다 0 이면 예전과 픽셀 단위로 같다.
+  let cardOff = null;
+  function composeCard() {
+    const inset = Math.max(0, Math.min(0.1, +(cfg.card.safeInset) || 0));
+    const sh = Object.assign({ x: 0, y: 0 }, cfg.card.printShift || {});
+    const sx = Math.round(+sh.x || 0), sy = Math.round(+sh.y || 0);
+    if (!inset && !sx && !sy) { drawCardLayers(cardCtx, card.width, card.height, { photo: true }); return; }
+    if (!cardOff) cardOff = document.createElement('canvas');
+    cardOff.width = card.width; cardOff.height = card.height;
+    drawCardLayers(cardOff.getContext('2d'), cardOff.width, cardOff.height, { photo: true });
+    const W = card.width, H = card.height, m = Math.round(Math.min(W, H) * inset);
+    // 테두리 채움: 같은 그림을 원래 크기로, 흐리게 — 선명하게 깔면 가장자리에 있던 로고 끝이 띠 안에 다시 비친다(실측). 인쇄 한 번에 한 번이라 blur 비용은 무시할 만하다
+    cardCtx.fillStyle = '#ffffff'; cardCtx.fillRect(0, 0, W, H);            // blur 가 캔버스 가장자리에서 알파를 깎으므로 먼저 불투명 바탕(스모크가 반투명 픽셀을 잡는다)
+    cardCtx.save(); cardCtx.filter = 'blur(10px)'; cardCtx.drawImage(cardOff, -30, -30, W + 60, H + 60); cardCtx.restore();
+    cardCtx.drawImage(cardOff, m + sx, m + sy, W - 2 * m, H - 2 * m);          // 안전 여백만큼 줄이고 밀어서
+  }
 
   // 뷰파인더 오버레이 — 카드와 같은 해상도로 자연·달수만 그려 라이브 영상 위에 겹친다.
   function paintViewfinderOverlay() {
