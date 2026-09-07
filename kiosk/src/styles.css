@@ -142,14 +142,12 @@ h1, .caption, .caption.big, .bubble .label, #count-num, #head-title, #idle p, #p
 .bubble.popped .body { visibility: hidden; }                              /* BURST: 물방울 숨김(터짐은 fx 캔버스) */
 /* MESSAGE: 터진 자리에 문구 페이드인 (스펙: BURST +200ms 에 200ms) — 사라지지 않고 남는다 */
 /* 2026-09-07 클라이언트: "터지고 난 뒤 글자가 너무 작다" → 3.1 → 4.0cqw. 상자를 물방울보다 좌우 3cqw 넓혀 두 줄 문구가 안 잘리게(간격을 벌려 이웃과 겹치지 않는다) */
-/* 데모 실측(1080×1920): 글자 높이 50px → 5.2cqw(56px), 줄 간격 86px → 1.55, 문구 블록 중심 y≈738(38.4%) → 물방울 상자 중심(40.4%)보다 2cqh 위 */
+/* 데모 실측(1080×1920)은 56px(5.2cqw)·줄 간격 1.55 였지만, 물방울을 이전 크기(폭 25cqw, 중심 21/50/79)로 되돌리자 2번·3번 두 줄 문구가 맞닿았다(0.8.6).
+   4.6cqw(50px)면 이웃 문구 사이 3.8cqw(41px), 오른쪽 여백 45px — 이 배치에서 겹치지 않는 최대 크기. 블록 중심은 상자 중심보다 2cqh 위(데모) */
 .bubble .done { position: absolute; inset: -4cqh -5cqw 0; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 5.2cqw; line-height: 1.55; color: #ffffff; text-align: center; }
+  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 4.6cqw; line-height: 1.55; color: #ffffff; text-align: center; }
 .bubble.popped .done { display: flex; animation: doneIn var(--msg-fade, 200ms) var(--msg-at, 200ms) ease-out both; }
 .bubble .done > div { white-space: nowrap; }                              /* 한 줄은 config 의 줄바꿈 그대로 — "이상을 복원하기" 가 상자 폭에서 꺾이지 않게 */
-/* 마지막 물방울(중심 82.5cqw)의 두 줄 문구 "사용한 물 / 이상을 복원하기"(폭 ~38cqw)는 가운데 정렬하면 오른쪽 가장자리 16px 까지 닿는다 —
-   블록 폭을 내용에 맞추고 오른쪽 끝을 무대 안쪽(97cqw, 데모의 여백 73px 에 가깝게)에 걸어 둔다. 줄은 블록 안에서 그대로 가운데 정렬 */
-.bubble:last-child .done { left: auto; right: 1cqw; width: max-content; max-width: 60cqw; }
 @keyframes doneIn { 0% { opacity: 0 } 100% { opacity: 1 } }
 
 /* 손가락 터치 커서 — 시안 2컷 */
