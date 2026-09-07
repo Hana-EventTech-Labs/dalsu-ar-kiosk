@@ -1,11 +1,11 @@
 {
   "version": 1,
   "src": "client-2026-09-07/river.mp4",
-  "fps": 24.0,
+  "fps": 30.0,
   "start": 0,
-  "end": 9.792,
-  "frames": 235,
-  "durationSec": 9.792,
+  "end": 9.733,
+  "frames": 292,
+  "durationSec": 9.733,
   "drops": [
     [
       0.162,
@@ -20,6 +20,6 @@
       0.19
     ]
   ],
-  "sizeBytes": 1871646,
+  "sizeBytes": 10289026,
   "note": "클라이언트 직접 전달 파일 — 원본 해상도 유지(저해상도면 원본 재요청)"
 }
