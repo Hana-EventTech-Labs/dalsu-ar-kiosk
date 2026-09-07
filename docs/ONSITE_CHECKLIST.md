@@ -31,6 +31,8 @@
 - [ ] `comm` 으로 인쇄가 안 되면 `"dcl"` 로 바꿔 재시도하고, 어느 쪽이 됐는지 기록
 - [ ] 프린터 2대 이상이면 `printer.deviceDesc`에 `--list`의 desc 일부 입력
 - [ ] 웹캠 2대 이상이면 `camera.deviceId` 지정, `camera.mirror`는 현장 확인 후 결정
+- [ ] **사진 위치·크기**(구멍 안): 현장 `config.json` 의 `card.photoZoom`(1 = 그대로, 1.2 = 20% 확대)과 `card.photoShift {x,y}`(구멍 크기 비율, +x 오른쪽 +y 아래, ±0.5).
+      예) 얼굴이 너무 작고 위에 있으면 `"card": { "photoZoom": 1.2, "photoShift": { "x": 0, "y": -0.1 } }`. 촬영 화면 미리보기와 인쇄가 같은 계산이라 화면에서 맞추면 그대로 찍힌다. 바꾼 뒤 앱 재시작
 - [ ] 문구·타이밍(`screen`, `timing`) 클라이언트 확정본과 대조
 - [ ] `screen.captureOverlay`는 `false` 유지(촬영 화면에 달수·물길을 겹치지 않음 — 사람 가림 방지). AR을 화면에도 겹쳐 보이려면 `true`
 

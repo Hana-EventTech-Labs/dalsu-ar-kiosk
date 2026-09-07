@@ -14,8 +14,8 @@ test('현장 파일이 없으면 번들 config 그대로 + 현장값만 담은 �
   assert.deepEqual(r.config, bundled);
   assert.ok(typeof r.overrides._readme === 'string' && r.overrides._readme.length > 20, '현장 담당자가 읽을 안내가 있어야 한다');
   assert.deepEqual(Object.keys(r.overrides).filter((k) => !k.startsWith('_')).sort(), ['camera', 'card', 'output', 'printer', 'river', 'sound', 'update']);
-  assert.deepEqual(r.overrides.card, { backRotate: bundled.card.backRotate, printBack: bundled.card.printBack, safeInset: bundled.card.safeInset, printShift: bundled.card.printShift },
-    '카드는 backRotate·printBack·safeInset·printShift 만 현장값');
+  assert.deepEqual(r.overrides.card, { backRotate: bundled.card.backRotate, printBack: bundled.card.printBack, safeInset: bundled.card.safeInset, printShift: bundled.card.printShift,
+    photoZoom: bundled.card.photoZoom, photoShift: bundled.card.photoShift }, '카드는 backRotate·printBack·safeInset·printShift·photoZoom·photoShift 만 현장값');
   assert.deepEqual(r.overrides.river, { quality: bundled.river.quality }, '물길은 quality 만 현장값');
 });
 

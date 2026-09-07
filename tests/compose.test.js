@@ -59,3 +59,19 @@ test('river: svgPath는 M/C 명령 2개, natureSlots는 좌우 교대', () => {
   assert.deepEqual(slots.map(s => s.side), [1, -1, 1, -1, 1, -1]);
   assert.ok(slots.every(s => s.u > 0 && s.u < 1));
 });
+
+test('프레임 구멍 사진 크롭(holePhotoCrop): zoom1·shift0 은 coverCrop 과 같고, 확대·이동은 소스 안에 머문다', () => {
+  const { holePhotoCrop, coverCrop } = require('../kiosk/src/compose');
+  const base = coverCrop(1280, 720, 596, 634);
+  const c0 = holePhotoCrop(1280, 720, 596, 634, 1, 0, 0, false);
+  assert.deepEqual(c0, base, '기본값은 cover 와 동일');
+  const z = holePhotoCrop(1280, 720, 596, 634, 1.25, 0, 0, false);
+  assert.ok(z.sw < base.sw && z.sh < base.sh, '확대하면 창이 작아진다');
+  assert.ok(Math.abs((z.sx + z.sw / 2) - 640) <= 1 && Math.abs((z.sy + z.sh / 2) - 360) <= 1, '이동 없으면 가운데');
+  const r = holePhotoCrop(1280, 720, 596, 634, 1, 0.3, 0, false);
+  assert.ok(r.sx < base.sx, '+x(피사체 오른쪽) 는 창이 왼쪽으로 (비반전)');
+  const rm = holePhotoCrop(1280, 720, 596, 634, 1, 0.3, 0, true);
+  assert.ok(rm.sx > base.sx, '반전(미러)이면 창이 오른쪽으로 — 인쇄에서 피사체가 오른쪽으로 가는 방향이 같다');
+  const far = holePhotoCrop(1280, 720, 596, 634, 1.5, 0.5, -0.5, false);
+  assert.ok(far.sx >= 0 && far.sy >= 0 && far.sx + far.sw <= 1280 && far.sy + far.sh <= 720, '창은 소스 밖으로 나가지 않는다(빈 띠 방지)');
+});

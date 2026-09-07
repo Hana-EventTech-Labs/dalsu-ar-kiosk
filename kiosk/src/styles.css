@@ -48,6 +48,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 /* 프레임 모드(card.frameImage): 카메라는 프레임의 투명 구멍 자리에만, 오버레이(프레임 그림)가 그 위를 덮는다 */
 #stage.vf.vf-frame #cam { left: var(--vf-cam-x); top: var(--vf-cam-y); width: var(--vf-cam-w); height: var(--vf-cam-h); transform: none; border-radius: 0; }
 #stage.vf.vf-frame #cam.mirror { transform: scaleX(-1); }
+#stage.vf.vf-frame #cam { visibility: hidden; }   /* 라이브 영상은 vf-overlay 캔버스가 인쇄와 같은 함수로 그린다(사진 확대·이동 반영). 스트림은 계속 흐른다 */
 #stage.vf.vf-frame #viewfinder { background: #fff; }
 #stage.vf.vf-frame #viewfinder .vf-below { display: none; }
 /* 데모(2026-09-06): 촬영 준비 문구와 3·2·1 은 카메라 자리 한가운데, 흰 글자. 준비 문구가 끝나면 숫자만 남는다 */
