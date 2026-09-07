@@ -171,7 +171,11 @@
       }
     ],
     "backRotate": 0,
-    "photoZoom": 1.0
+    "photoZoom": 1.0,
+    "photoShift": {
+      "x": 0,
+      "y": 0
+    }
   },
   "printer": {
     "mode": "dry-run",

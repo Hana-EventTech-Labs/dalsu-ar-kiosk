@@ -825,11 +825,14 @@
       const hx = Math.round(hole.x * W), hy = Math.round(hole.y * H), hw = Math.round(hole.w * W), hh = Math.round(hole.h * H);
       if (o.photo !== false) {
         // 인쇄본은 완전 불투명해야 한다 — 프레임 PNG 의 안티에일리어싱 가장자리(알파 131~254, 실측 5천 px)가 투명 캔버스 위에 남으면
-        // 프린터 SDK 가 알파를 어떻게 다룰지 보장이 없다. 흰 바탕을 먼저 깔고 사진·프레임을 올린다(오버레이는 라이브 영상 위라 그대로 투명).
+        // 프린터 SDK 가 알파를 어떻게 다룰지 보장이 없다. 흰 바탕을 먼저 깔고 사진·프레임을 올린다.
         ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
-        const cc = coverCrop(sw, sh, hw, hh);
+        // 구멍 안 사진 위치·확대는 현장 config(card.photoZoom ≥1, card.photoShift {x,y}) — 인쇄와 촬영 화면이 같은 함수를 쓴다
+        const mirror = !!(cfg.camera.mirror && src !== mock);
+        const psh = Object.assign({ x: 0, y: 0 }, cfg.card.photoShift || {});
+        const cc = holePhotoCrop(sw, sh, hw, hh, cfg.card.photoZoom, psh.x, psh.y, mirror);
         ctx.save();
-        if (cfg.camera.mirror && src !== mock) { ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, cc.sx, cc.sy, cc.sw, cc.sh, W - hx - hw, hy, hw, hh); }
+        if (mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, cc.sx, cc.sy, cc.sw, cc.sh, W - hx - hw, hy, hw, hh); }
         else ctx.drawImage(src, cc.sx, cc.sy, cc.sw, cc.sh, hx, hy, hw, hh);
         ctx.restore();
       }
@@ -956,6 +959,14 @@
     cv.width = card.width; cv.height = card.height;
     const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
     drawCardLayers(ctx, cv.width, cv.height, { photo: false });
+  }
+
+  let vfLiveCtx = null;
+  function paintViewfinderLive() {
+    const cv = document.getElementById('vf-overlay'); if (!cv) return;
+    if (cv.width !== card.width || cv.height !== card.height) { cv.width = card.width; cv.height = card.height; vfLiveCtx = null; }
+    if (!vfLiveCtx) vfLiveCtx = cv.getContext('2d');
+    drawCardLayers(vfLiveCtx, cv.width, cv.height, { photo: true });   // 흰 바탕 + 사진(구멍) + 프레임 — 인쇄본과 동일(안전 여백만 제외)
   }
 
   // ---------- FX 캔버스 (화면 연출) ----------
@@ -1777,7 +1788,9 @@
     }
     // 뷰파인더 틀 안은 fx 를 도려낸다 — fx 캔버스가 <video> 위에 있어 그대로 두면 옅은 장면이 얼굴을 덮는다
     if (onCam && vfBox) {
-      if (!vfPainted) { try { paintViewfinderOverlay(); } catch (e) { log('WARN', '뷰파인더 오버레이 실패', { error: String(e) }); } vfPainted = true; }
+      // 프레임 모드: 라이브 영상을 <video> 요소 대신 **인쇄와 같은 함수**로 매 프레임 그린다 — 사진 확대·이동(card.photoZoom/photoShift)이 미리보기와 인쇄에서 정확히 같다
+      if (A.cardFrame && frameSource) { try { paintViewfinderLive(); } catch (e) { if (!vfPainted) log('WARN', '뷰파인더 라이브 실패', { error: String(e) }); } vfPainted = true; }
+      else if (!vfPainted) { try { paintViewfinderOverlay(); } catch (e) { log('WARN', '뷰파인더 오버레이 실패', { error: String(e) }); } vfPainted = true; }
       const b = vfBox;
       fxCtx.save(); camReset(fxCtx); fxCtx.globalCompositeOperation = 'destination-out';
       fxCtx.beginPath(); fxCtx.roundRect(b.x, b.y, b.w, b.h, b.r); fxCtx.fill(); fxCtx.restore();

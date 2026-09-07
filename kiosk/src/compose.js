@@ -33,6 +33,21 @@ function photoCrop(srcW, srcH, dstW, dstH, zoom) {
   };
 }
 
+// 프레임 구멍 안 사진 크롭 (2026-09-07, 현장 조절용): cover 크롭을 기준으로 zoom(≥1)만큼 더 당기고 shift 만큼 옮긴다.
+//   shiftX/Y 는 구멍 크기 대비 비율(-0.5~0.5). **+x = 피사체가 오른쪽으로, +y = 아래로** 보이게 이동(창은 반대로 움직인다).
+//   mirror 면 인쇄가 좌우 반전이라 x 창 이동 방향을 뒤집어 "피사체가 오른쪽으로"가 그대로 성립하게 한다.
+//   창은 항상 소스 안에 머문다(밖으로 나가면 빈 띠가 인쇄된다). zoom 1·shift 0 이면 coverCrop 과 같다.
+function holePhotoCrop(srcW, srcH, holeW, holeH, zoom, shiftX, shiftY, mirror) {
+  const base = coverCrop(srcW, srcH, holeW, holeH);
+  const z = Math.min(3, Math.max(1, +zoom || 1));
+  const w = Math.max(2, Math.round(base.sw / z)), h = Math.max(2, Math.round(base.sh / z));
+  const fx = Math.max(-0.5, Math.min(0.5, +shiftX || 0)), fy = Math.max(-0.5, Math.min(0.5, +shiftY || 0));
+  const cx = srcW / 2 + (mirror ? fx : -fx) * w, cy = srcH / 2 - fy * h;
+  const sx = Math.round(Math.min(srcW - w, Math.max(0, cx - w / 2)));
+  const sy = Math.round(Math.min(srcH - h, Math.max(0, cy - h / 2)));
+  return { sx, sy, sw: w, sh: h };
+}
+
 // 달수 캐릭터 배치: **카드의 짧은 변** 대비 scale, 앵커 기준 위치.
 // 짧은 변을 기준으로 잡아야 가로/세로 카드에서 캐릭터 크기가 같아 보인다
 // (세로 카드에서 높이 기준으로 잡으면 캐릭터가 폭을 넘어 인물을 덮는다).
@@ -102,6 +117,6 @@ function natureCardSlots(count, top, zones) {
 }
 
 // 브라우저(renderer, contextIsolation)에서는 전역으로, node(test)에서는 module.exports로 노출
-{ const __exports = { coverCrop, photoCrop, dalsuPlacement, artBox, natureCardSlots, CARD_NATURE_ZONES, CARD_NATURE_ZONES_PORTRAIT, LAYERS };
+{ const __exports = { coverCrop, photoCrop, holePhotoCrop, dalsuPlacement, artBox, natureCardSlots, CARD_NATURE_ZONES, CARD_NATURE_ZONES_PORTRAIT, LAYERS };
 if (typeof module !== 'undefined' && module.exports) module.exports = __exports;
   else if (typeof window !== 'undefined') Object.assign(window, __exports); }
