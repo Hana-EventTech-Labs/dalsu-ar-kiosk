@@ -19,7 +19,7 @@
     },
     "bubbleLabel": false,
     "collectTargets": null,
-    "guideHand": false,
+    "guideHand": true,
     "burst": {
       "blend": "source-over",
       "gain": 1,
