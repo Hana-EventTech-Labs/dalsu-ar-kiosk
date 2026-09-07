@@ -47,6 +47,7 @@ test('시안 문구가 config에 모두 있고 물방울 문구는 클라이언�
   assert.equal(texts.reduce, '물 사용량 줄이기');
   assert.equal(texts.reuse, '사용한 물 다시쓰기');
   assert.equal(texts.restore, '사용한 물 이상을 복원하기');
+  assert.deepEqual(cfg.goals.map((g) => g.text.split(/\r?\n/).length), [2, 2, 2], '2026-09-07 클라이언트 지정 줄바꿈: 물 사용량/줄이기 · 사용한 물/다시쓰기 · 사용한 물/이상을 복원하기');
   assert.equal(cfg.screen.bubbleLabel, false, '라벨(Reduce/Reuse/Restore)은 2026-09-07 PNG 에 들어 있다 — CSS 라벨을 겹치지 않는다');
   assert.ok(cfg.timing.readyMs >= 2000, '"사진 촬영 준비해주세요" 는 2026-09-07 요청으로 1초 더(≥2초)');
   assert.deepEqual(cfg.goals.map((g) => g.key), ['reduce', 'reuse', 'restore'], '물방울 3개 (Recycle·Return 2단계는 폐기)');
@@ -468,10 +469,13 @@ test('상단 물방울(모은 물) 자리가 물길 머리보다 위에 있다 �
   const riverTopY = river.pointAt(0) [1];
   assert.ok(riverTopY * 100 > row, `물길 시작(${(riverTopY * 100).toFixed(1)}vh)이 상단 물방울 줄(${row}vh)보다 아래여야 한다`);
   const bl = cfg.screen.bubbleLayout;
-  // 스펙(2026-09-06)은 x 중심 25/50/75 였으나 2026-09-07 "물방울이 너무 붙어 있다" 요청으로 양옆을 벌렸다(폭 25cqw 는 유지)
-  assert.deepEqual(bl.xCenters, [21, 50, 79], '2026-09-07: 물방울 간격을 벌린다');
-  assert.ok(bl.xCenters[1] - bl.xCenters[0] > bl.width + 3 && bl.xCenters[0] - bl.width / 2 >= 5, '이웃과 3cqw 이상 떨어지고 화면 안에 든다');
-  assert.ok(bl.top > 28 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 y550~1000 띠 안(스펙)');
+  // 스펙 문서(2026-09-06)는 x 중심 25/50/75·폭 300 이었지만 최종 데모 영상 실측은 중심 190/540/890(17.6/50/82.4%), 몸체 폭 310px, y 505~945.
+  // 2026-09-07 "너무 붙어 있다 / 데모대로 정확히" → 데모 실측값. 몸체 사이 41px.
+  assert.deepEqual(bl.xCenters, [17.5, 50, 82.5], '데모 실측 x 중심');
+  assert.equal(bl.width, 31, '데모 실측 폭(몸체 310px = 상자 31cqw)');
+  const bodyW = bl.width * 417 / 450;
+  assert.ok(bl.xCenters[1] - bl.xCenters[0] - bodyW >= 3 && bl.xCenters[0] - bl.width / 2 >= 1, '이웃 몸체와 3cqw 이상 떨어지고 화면 안에 든다');
+  assert.ok(bl.top > 24 && bl.top + bl.width * 1.4 * 1080 / 1920 < 53, '물방울은 데모 띠(y 505~945) 안, 안내 문구(57.8cqh) 위');
 });
 
 test('숲 배치: 나무가 물길을 침범하지 않고 양옆에 선다 (시안 5·6컷)', () => {

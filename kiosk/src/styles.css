@@ -10,7 +10,9 @@ body.kiosk { cursor: none; }   /* 커서 숨김은 키오스크(터치) 모드�
 body { display: flex; align-items: center; justify-content: center; }
 .jua, h1, .caption, .bubble .label, #count-num { font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; }
 /* 번들 서체는 400 웨이트뿐이라, 굵게 보이려면 합성 볼드(700) + 글자 외곽 보강을 함께 쓴다 */
-h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-title, #idle p, #guide-text, #preview-text { font-weight: 700; }
+h1, .caption, .caption.big, .bubble .label, #count-num, #head-title, #idle p, #preview-text { font-weight: 700; }
+/* 물방울 문구·안내 문구는 클라이언트 데모(2026-09-06) 실측대로: 흰색·중간 굵기(500)·그림자 없음 (획 4~5px@56px) */
+.bubble .done, #guide-text { font-weight: 500; }
 /* 키오스크는 1080×1920 세로 전용. 어떤 모니터에서 띄워도 같은 화면이 되도록 9:16 무대를 만들고,
    내부 길이 단위는 뷰포트(vw/vh)가 아니라 무대 기준(cqw/cqh)을 쓴다.
    가로 모니터에서 vw로 잡으면 물방울이 커지면서 하단 달수를 덮는다. */
@@ -127,7 +129,7 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 @keyframes bubbleFloat { 0%,100% { transform: translateY(-.52cqh) } 50% { transform: translateY(.52cqh) } }   /* y ±10px, 2.4s 사인 */
 .bubble .body { position: absolute; inset: 0; transform-origin: 50% 60%; transition: transform var(--press-ms, 80ms) ease-out; }
 .bubble.pressed .body { transform: scale(1.05, .95); }                    /* PRESS: 스쿼시 */
-.bubble .body img.drop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }
+.bubble .body img.drop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }   /* 그림자 없음 — 클라이언트 원본에 없던 그림자가 생겼다는 지적(2026-09-07). 라벨·광택은 PNG 에 다 들어 있다 */
 .bubble .body svg.drop { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 1.4cqh 2.8cqh rgba(11,58,88,.34)); }  /* PNG 폴백 */
 .bubble .inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 16%; gap: .8cqh; }
 .bubble svg.icon { width: 8.4cqw; height: 8.4cqw; }
@@ -140,10 +142,14 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
 .bubble.popped .body { visibility: hidden; }                              /* BURST: 물방울 숨김(터짐은 fx 캔버스) */
 /* MESSAGE: 터진 자리에 문구 페이드인 (스펙: BURST +200ms 에 200ms) — 사라지지 않고 남는다 */
 /* 2026-09-07 클라이언트: "터지고 난 뒤 글자가 너무 작다" → 3.1 → 4.0cqw. 상자를 물방울보다 좌우 3cqw 넓혀 두 줄 문구가 안 잘리게(간격을 벌려 이웃과 겹치지 않는다) */
-.bubble .done { position: absolute; inset: 0 -3cqw; display: none; flex-direction: column; align-items: center; justify-content: center;
-  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 4cqw; line-height: 1.3; color: #ffffff; text-align: center;
-  text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.55), 0 0 1.4cqh rgba(0,60,110,.4); }   /* 데모(2026-09-06): 하늘 위 흰 글자 */
+/* 데모 실측(1080×1920): 글자 높이 50px → 5.2cqw(56px), 줄 간격 86px → 1.55, 문구 블록 중심 y≈738(38.4%) → 물방울 상자 중심(40.4%)보다 2cqh 위 */
+.bubble .done { position: absolute; inset: -4cqh -5cqw 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 .4cqw; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif; font-size: 5.2cqw; line-height: 1.55; color: #ffffff; text-align: center; }
 .bubble.popped .done { display: flex; animation: doneIn var(--msg-fade, 200ms) var(--msg-at, 200ms) ease-out both; }
+.bubble .done > div { white-space: nowrap; }                              /* 한 줄은 config 의 줄바꿈 그대로 — "이상을 복원하기" 가 상자 폭에서 꺾이지 않게 */
+/* 마지막 물방울(중심 82.5cqw)의 두 줄 문구 "사용한 물 / 이상을 복원하기"(폭 ~38cqw)는 가운데 정렬하면 오른쪽 가장자리 16px 까지 닿는다 —
+   블록 폭을 내용에 맞추고 오른쪽 끝을 무대 안쪽(97cqw, 데모의 여백 73px 에 가깝게)에 걸어 둔다. 줄은 블록 안에서 그대로 가운데 정렬 */
+.bubble:last-child .done { left: auto; right: 1cqw; width: max-content; max-width: 60cqw; }
 @keyframes doneIn { 0% { opacity: 0 } 100% { opacity: 1 } }
 
 /* 손가락 터치 커서 — 시안 2컷 */
@@ -152,9 +158,9 @@ h1, .caption, .caption.big, .bubble .label, .bubble .done, #count-num, #head-tit
   filter: drop-shadow(0 .8cqh 1.2cqh rgba(60,90,110,.28)); }
 #guide-hand svg { width: 100%; height: auto; display: block; }
 @keyframes tap { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-.6cqw,-1.4cqh) } }
-#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; right: 5cqw; top: 56.5cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;   /* 스펙: y1050~1120 */
-  font-size: 3cqw; line-height: 1.32; color: #fff; white-space: pre-line; text-align: center;
-  text-shadow: 0 .25cqh .8cqh rgba(0,60,110,.6), 0 0 1.2cqh rgba(0,60,110,.45); }   /* 하늘(파랑) 위라 흰 글자 + 짙은 그림자 */
+#guide-text { transition: opacity .35s; position: absolute; left: 5cqw; right: 5cqw; top: 56.2cqh; z-index: 3; font-family: "Samsung SS Head KR", "Malgun Gothic", sans-serif;   /* 스펙: y1050~1120 */
+  font-size: 4.45cqw; line-height: 1.32; color: #fff; white-space: pre-line; text-align: center; }
+  /* 데모 실측: 글자 높이 44px(→48px=4.45cqw), 중심 y=1110(57.8%), 그림자 없음. 2026-09-07 "없던 그림자" 지적으로 text-shadow 제거 */
 
 /* 카운트다운 (카메라 위) */
 #countdown { background: linear-gradient(180deg, rgba(47,58,68,.12), rgba(47,58,68,.35)); }
