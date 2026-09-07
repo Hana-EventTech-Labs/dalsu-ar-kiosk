@@ -10,16 +10,16 @@
     "guideText": "물방울을 터치해주세요!",
     "bubbleLayout": {
       "xCenters": [
-        21,
+        17.5,
         50,
-        79
+        82.5
       ],
-      "top": 30.5,
-      "width": 25
+      "top": 25.6,
+      "width": 31
     },
     "bubbleLabel": false,
     "collectTargets": null,
-    "guideHand": true,
+    "guideHand": false,
     "burst": {
       "blend": "source-over",
       "gain": 1,
@@ -89,7 +89,7 @@
     {
       "key": "restore",
       "label": "Restore",
-      "text": "사용한\n물 이상을\n복원하기",
+      "text": "사용한 물\n이상을 복원하기",
       "image": "assets/bubble-restore.png",
       "color": "#00b3e3",
       "icon": "sprout",
